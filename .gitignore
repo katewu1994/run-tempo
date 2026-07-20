@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-verify/
+dist-check2/
+dist-check3/
+dist-check4/
+dist-check5/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.DS_Store
+
