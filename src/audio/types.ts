@@ -19,7 +19,7 @@ export type BpmSettings = {
 
 export type ClickStyle = "soft" | "sharp" | "wood";
 
-export type AccentEvery = 0 | 2 | 4 | 8;
+export type AccentEvery = 0 | 2 | 4;
 
 export type MetronomeSettings = {
   targetBpm: number;

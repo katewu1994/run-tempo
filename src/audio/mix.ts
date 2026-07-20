@@ -2,7 +2,7 @@ export function mixAudio(
   audioContext: AudioContext,
   originalBuffer: AudioBuffer,
   metronomeBuffer: AudioBuffer,
-  songGain: number,
+  masterGain: number,
 ): AudioBuffer {
   const length = originalBuffer.length;
   const channelCount = originalBuffer.numberOfChannels;
@@ -12,14 +12,18 @@ export function mixAudio(
     originalBuffer.sampleRate,
   );
   const click = metronomeBuffer.getChannelData(0);
-  const clampedSongGain = clamp(songGain, 0, 1);
+  const clampedMasterGain = clamp(masterGain, 0, 2);
 
   for (let channel = 0; channel < channelCount; channel += 1) {
     const input = originalBuffer.getChannelData(channel);
     const output = outputBuffer.getChannelData(channel);
 
     for (let i = 0; i < length; i += 1) {
-      output[i] = clamp(input[i] * clampedSongGain + (click[i] ?? 0), -1, 1);
+      output[i] = clamp(
+        (input[i] + (click[i] ?? 0)) * clampedMasterGain,
+        -1,
+        1,
+      );
     }
   }
 

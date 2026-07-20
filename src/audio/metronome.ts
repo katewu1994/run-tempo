@@ -56,7 +56,7 @@ function writeClick(
   isAccent: boolean,
   beatIndex: number,
 ) {
-  const volume = clamp(settings.volume, 0, 1);
+  const volume = clamp(settings.volume, 0, 2);
   const accentGain = isAccent ? ACCENT_GAIN : 1;
   let seed = (beatIndex + 1) * 16807;
 
