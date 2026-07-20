@@ -16,6 +16,12 @@ import {
   parsePlannerInput,
   PlannerOutputValidationError,
 } from "./validate.js";
+import {
+  CoverArtServiceError,
+  fetchCoverArtImage,
+  lookupCoverArt,
+  parseCoverArtLookup,
+} from "./coverArt.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const SERVICE_NAME = "run-tempo-planner";
@@ -58,6 +64,42 @@ app.post("/api/openai/mix-plan", async (req, res) => {
     res.status(status).json({
       error: safeMessage,
     });
+  }
+});
+
+app.get("/api/cover-art/lookup", async (req, res) => {
+  try {
+    const input = parseCoverArtLookup(req.query);
+    const candidates = await lookupCoverArt(input);
+    res.json({ candidates });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({ error: "Artist and album are required." });
+      return;
+    }
+
+    const status = error instanceof CoverArtServiceError ? error.status : 502;
+    console.error("Cover art lookup failed", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    res.status(status).json({ error: "Unable to look up cover art." });
+  }
+});
+
+app.get("/api/cover-art/image/:releaseGroupId", async (req, res) => {
+  try {
+    const image = await fetchCoverArtImage(req.params.releaseGroupId);
+    res.setHeader("Content-Type", image.contentType);
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.send(Buffer.from(image.bytes));
+  } catch (error) {
+    const status = error instanceof CoverArtServiceError ? error.status : 502;
+    console.error("Cover art image request failed", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    res.status(status).json({ error: "Unable to load cover art." });
   }
 });
 

@@ -17,7 +17,11 @@ import {
   type ClickTempoRelation,
 } from "./audio/bpmCandidates";
 import { decodeAudioFile } from "./audio/decodeAudio";
-import { audioBufferToWavBlob, createWavFileName } from "./audio/exportWav";
+import {
+  audioBufferToWavBlob,
+  createWavFileName,
+  type WavMetadata,
+} from "./audio/exportWav";
 import { createMetronomeBuffer } from "./audio/metronome";
 import { copyAudioBufferSlice, mixAudio } from "./audio/mix";
 import { getTempoRatio, resampleTempo } from "./audio/tempo";
@@ -101,13 +105,6 @@ function App() {
   const clickTempoOptions = useMemo(
     () => getClickTempoOptions(baseDetectedBpm, targetBpm),
     [baseDetectedBpm, targetBpm],
-  );
-  const exportFileName = useMemo(
-    () =>
-      loadedAudio
-        ? createWavFileName(loadedAudio.fileName, metronomeSettings.targetBpm)
-        : null,
-    [loadedAudio, metronomeSettings.targetBpm],
   );
   const canExport = loadedAudio !== null && clickBpm !== null;
   const flowSteps = useMemo(
@@ -598,7 +595,7 @@ function App() {
     [playMixPreview],
   );
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(async (metadata: WavMetadata) => {
     if (!loadedAudio) {
       return;
     }
@@ -619,10 +616,13 @@ function App() {
       metronome,
       masterGain,
     );
-    const blob = audioBufferToWavBlob(mixed);
+    const blob = audioBufferToWavBlob(mixed, metadata);
     downloadBlob(
       blob,
-      createWavFileName(loadedAudio.fileName, metronomeSettings.targetBpm),
+      createWavFileName(
+        metadata.title || getBaseFileName(loadedAudio.fileName),
+        metronomeSettings.targetBpm,
+      ),
     );
   }, [
     createCurrentMetronome,
@@ -785,7 +785,8 @@ function App() {
               {currentStep === 4 ? (
                 <ExportPanel
                   disabled={!canExport}
-                  fileName={exportFileName}
+                  defaultTitle={getBaseFileName(loadedAudio?.fileName ?? "")}
+                  targetBpm={metronomeSettings.targetBpm}
                   copy={copy.exportPanel}
                   onExport={handleExport}
                 />
@@ -805,15 +806,19 @@ function App() {
               <span className="stage-progress">
                 {currentStep} / {flowSteps.length}
               </span>
-              <button
-                type="button"
-                className="primary-action"
-                disabled={!canGoNext}
-                onClick={() => setCurrentStep((step) => Math.min(flowSteps.length, step + 1))}
-              >
-                {copy.nav.next}
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
+              {currentStep < flowSteps.length ? (
+                <button
+                  type="button"
+                  className="primary-action"
+                  disabled={!canGoNext}
+                  onClick={() =>
+                    setCurrentStep((step) => Math.min(flowSteps.length, step + 1))
+                  }
+                >
+                  {copy.nav.next}
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              ) : null}
             </nav>
             </div>
           </div>
@@ -944,3 +949,7 @@ function disconnectNode(node: AudioNode | null | undefined): void {
 }
 
 export default App;
+
+function getBaseFileName(fileName: string): string {
+  return fileName.replace(/\.[^/.]+$/, "");
+}

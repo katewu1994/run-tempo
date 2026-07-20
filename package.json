@@ -9,6 +9,7 @@
     "dev:backend": "npm --prefix backend run dev",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test:bpm": "node scripts/run-bpm-tests.mjs",
+    "test:export": "node scripts/run-export-tests.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
