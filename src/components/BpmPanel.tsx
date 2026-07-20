@@ -57,6 +57,7 @@ export function BpmPanel({
   const isAutoMatched =
     clickOptions.find((option) => option.relation === selectedRelation)
       ?.recommended ?? false;
+  const tempoSpeedLabel = getTempoSpeedLabel(tempoRatio, copy);
 
   useEffect(() => {
     setTargetDraft(String(targetBpm));
@@ -222,7 +223,12 @@ export function BpmPanel({
               </div>
               <div>
                 <small>{copy.musicSpeedLabel}</small>
-                <strong>{getTempoSpeedLabel(tempoRatio, copy)}</strong>
+                <strong className="tempo-speed-value">
+                  {tempoSpeedLabel.value}
+                  {tempoSpeedLabel.qualifier ? (
+                    <small>{tempoSpeedLabel.qualifier}</small>
+                  ) : null}
+                </strong>
               </div>
               <div>
                 <small>{copy.summary.relationship}</small>
@@ -277,13 +283,22 @@ export function BpmPanel({
   );
 }
 
-function getTempoSpeedLabel(tempoRatio: number, copy: AppCopy["bpm"]): string {
+function getTempoSpeedLabel(
+  tempoRatio: number,
+  copy: AppCopy["bpm"],
+): { value: string; qualifier: string | null } {
   const percentage = Math.round(Math.abs(tempoRatio - 1) * 100);
   if (percentage < 1) {
-    return copy.originalSpeedLabel;
+    return { value: copy.originalSpeedLabel, qualifier: null };
   }
 
   return tempoRatio > 1
-    ? copy.speedUpLabel(percentage)
-    : copy.slowDownLabel(percentage);
+    ? {
+        value: copy.speedUpAmount(percentage),
+        qualifier: copy.speedUpQualifier,
+      }
+    : {
+        value: copy.slowDownAmount(percentage),
+        qualifier: copy.slowDownQualifier,
+      };
 }
