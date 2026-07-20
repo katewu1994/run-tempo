@@ -1,65 +1,50 @@
 import {
-  Crosshair,
-  Minus,
+  AudioLines,
+  Headphones,
   Pause,
   Play,
-  Plus,
-  RotateCcw,
-  TimerReset,
+  SlidersHorizontal,
   Volume2,
 } from "lucide-react";
+import type { CSSProperties } from "react";
+import type { AccentEvery, ClickStyle, MetronomeSettings } from "../audio/types";
 import type { AppCopy } from "../i18n";
 import { formatPercent } from "../utils/format";
 
-type PlaybackMode = "idle" | "original" | "metronome" | "mix";
-type SyncMode = "none" | "auto" | "manual";
+type PlaybackMode = "idle" | "mix";
+const CLICK_STYLES: ClickStyle[] = ["soft", "sharp", "wood"];
+const ACCENTS: AccentEvery[] = [0, 2, 4];
 
 type PreviewPanelProps = {
   playbackMode: PlaybackMode;
   disabled: boolean;
-  songGain: number;
-  clickVolume: number;
-  firstBeatSourceSec: number | null;
-  offsetMs: number;
-  syncMode: SyncMode;
-  canMarkFirstBeat: boolean;
+  masterGain: number;
+  metronomeVolume: number;
   copy: AppCopy["preview"];
-  onSongGainChange: (value: number) => void;
+  metronomeCopy: AppCopy["metronome"];
+  metronomeSettings: MetronomeSettings;
+  onMasterGainChange: (value: number) => void;
   onClickVolumeChange: (value: number) => void;
-  onPlayOriginal: () => void;
+  onMetronomeSettingsChange: (settings: MetronomeSettings) => void;
   onPlayMixPreview: () => void;
   onStop: () => void;
-  onAutoBeatSync: () => void;
-  onMarkFirstBeat: () => void;
-  onClearFirstBeat: () => void;
-  onOffsetMsChange: (offsetMs: number) => void;
 };
 
 export function PreviewPanel({
   playbackMode,
   disabled,
-  songGain,
-  clickVolume,
-  firstBeatSourceSec,
-  offsetMs,
-  syncMode,
-  canMarkFirstBeat,
+  masterGain,
+  metronomeVolume,
   copy,
-  onSongGainChange,
+  metronomeCopy,
+  metronomeSettings,
+  onMasterGainChange,
   onClickVolumeChange,
-  onPlayOriginal,
+  onMetronomeSettingsChange,
   onPlayMixPreview,
   onStop,
-  onAutoBeatSync,
-  onMarkFirstBeat,
-  onClearFirstBeat,
-  onOffsetMsChange,
 }: PreviewPanelProps) {
-  const isOriginalPlaying = playbackMode === "original";
   const isMixPlaying = playbackMode === "mix";
-  const setOffsetMs = (nextOffsetMs: number) => {
-    onOffsetMsChange(Math.max(-1500, Math.min(1500, Math.round(nextOffsetMs))));
-  };
 
   return (
     <section className="panel" aria-labelledby="preview-title">
@@ -68,55 +53,167 @@ export function PreviewPanel({
           <span className="eyebrow">{copy.stepLabel}</span>
           <h2 id="preview-title">{copy.title}</h2>
         </div>
-        <TimerReset aria-hidden="true" />
+        <Headphones aria-hidden="true" />
       </div>
 
-      <label className="range-field">
-        <span>
-          <Volume2 size={16} aria-hidden="true" />
-          {copy.songVolumeLabel}
-        </span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={songGain}
-          onChange={(event) => onSongGainChange(Number(event.target.value))}
-        />
-        <output>{formatPercent(songGain)}</output>
-      </label>
-
-      <label className="range-field">
-        <span>
-          <Volume2 size={16} aria-hidden="true" />
-          {copy.clickVolumeLabel}
-        </span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={clickVolume}
-          onChange={(event) => onClickVolumeChange(Number(event.target.value))}
-        />
-        <output>{formatPercent(clickVolume)}</output>
-      </label>
-
-      <div className="action-grid">
-        <button
-          type="button"
-          className="secondary-action"
-          disabled={disabled}
-          onClick={isOriginalPlaying ? onStop : onPlayOriginal}
+      <details
+        className={`metronome-settings-card${isMixPlaying ? " is-locked" : ""}`}
+        aria-disabled={isMixPlaying}
+      >
+        <summary
+          onClick={(event) => {
+            if (isMixPlaying) {
+              event.preventDefault();
+            }
+          }}
         >
-          {isOriginalPlaying ? <Pause size={18} /> : <Play size={18} />}
-          {isOriginalPlaying ? copy.stopSong : copy.playSong}
-        </button>
+          <span className="settings-summary-icon" aria-hidden="true">
+            <AudioLines size={18} />
+          </span>
+          <span className="settings-summary-copy">
+            <strong>{metronomeCopy.title}</strong>
+            <small>
+              {metronomeCopy.clickStyleLabels[metronomeSettings.clickStyle]}
+              <span aria-hidden="true"> · </span>
+              {metronomeSettings.accentEvery === 0
+                ? metronomeCopy.noAccent
+                : metronomeCopy.everyAccent(metronomeSettings.accentEvery)}
+            </small>
+          </span>
+          <span className="settings-summary-action">
+            {isMixPlaying ? copy.stopPreviewToEdit : copy.customizeLabel}
+          </span>
+        </summary>
+        <div className="metronome-settings-content">
+          <div className="field-group">
+            <label>{metronomeCopy.clickStyleLabel}</label>
+            <div className="segmented">
+              {CLICK_STYLES.map((style) => (
+                <button
+                  key={style}
+                  type="button"
+                  disabled={disabled || isMixPlaying}
+                  className={metronomeSettings.clickStyle === style ? "active" : ""}
+                  onClick={() =>
+                    onMetronomeSettingsChange({ ...metronomeSettings, clickStyle: style })
+                  }
+                >
+                  {metronomeCopy.clickStyleLabels[style]}
+                </button>
+              ))}
+            </div>
+          </div>
 
+          <div className="field-group">
+            <label>{metronomeCopy.accentLabel}</label>
+            <div className="segmented">
+              {ACCENTS.map((accent) => (
+                <button
+                  key={accent}
+                  type="button"
+                  disabled={disabled || isMixPlaying}
+                  className={metronomeSettings.accentEvery === accent ? "active" : ""}
+                  onClick={() =>
+                    onMetronomeSettingsChange({ ...metronomeSettings, accentEvery: accent })
+                  }
+                >
+                  {accent === 0
+                    ? metronomeCopy.noAccent
+                    : metronomeCopy.everyAccent(accent)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <section className="volume-mixer" aria-labelledby="mix-balance-title">
+        <div className="volume-mixer-heading">
+          <span className="volume-mixer-icon" aria-hidden="true">
+            <SlidersHorizontal size={18} />
+          </span>
+          <div>
+            <h3 id="mix-balance-title">{copy.volumeTitle}</h3>
+            <p>{copy.volumeHint}</p>
+          </div>
+        </div>
+
+        <label className="mixer-channel volume-control">
+          <span className="mixer-channel-heading">
+            <span className="channel-icon metronome-channel-icon" aria-hidden="true">
+              <AudioLines size={17} />
+            </span>
+            <span className="channel-copy">
+              <strong>{copy.metronomeVolumeLabel}</strong>
+              <small>{copy.metronomeVolumeHint}</small>
+            </span>
+            <output className="metronome-relative-output">
+              {copy.metronomeRelativeValue(metronomeVolume)}
+            </output>
+          </span>
+          <span className="relative-volume-range">
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.01"
+              value={metronomeVolume}
+              aria-valuetext={copy.metronomeRelativeValue(metronomeVolume)}
+              style={{
+                "--range-value": `${metronomeVolume * 50}%`,
+              } as CSSProperties}
+              onChange={(event) => onClickVolumeChange(Number(event.target.value))}
+            />
+            <span className="relative-volume-scale" aria-hidden="true">
+              <span>{copy.relativeVolumeMin}</span>
+              <span>{copy.relativeVolumeReference}</span>
+              <span>{copy.relativeVolumeMax}</span>
+            </span>
+          </span>
+        </label>
+
+        <label className="mixer-channel volume-control master-channel">
+          <span className="mixer-channel-heading">
+            <span className="channel-icon master-channel-icon" aria-hidden="true">
+              <Volume2 size={17} />
+            </span>
+            <span className="channel-copy">
+              <strong>{copy.overallVolumeLabel}</strong>
+              <small>{copy.overallVolumeHint}</small>
+            </span>
+            <output>{formatPercent(masterGain)}</output>
+          </span>
+          <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.01"
+              value={masterGain}
+              aria-valuetext={copy.overallRelativeValue(masterGain)}
+              style={{
+                "--range-value": `${masterGain * 50}%`,
+              } as CSSProperties}
+              onChange={(event) => onMasterGainChange(Number(event.target.value))}
+            />
+            <span className="relative-volume-scale" aria-hidden="true">
+              <span>{copy.relativeVolumeMin}</span>
+              <span>{copy.overallVolumeReference}</span>
+              <span>{copy.relativeVolumeMax}</span>
+            </span>
+        </label>
+      </section>
+
+      <p className="field-hint">{copy.beatHint}</p>
+
+      <div className="preview-launch">
+        <div className="preview-launch-copy">
+          <span>{copy.readyLabel}</span>
+          <strong>{copy.previewPrompt}</strong>
+          <small>{copy.previewBalance(metronomeVolume, masterGain)}</small>
+        </div>
         <button
           type="button"
-          className="primary-action"
+          className="primary-action preview-action"
           disabled={disabled}
           onClick={isMixPlaying ? onStop : onPlayMixPreview}
         >
@@ -124,113 +221,6 @@ export function PreviewPanel({
           {isMixPlaying ? copy.stopPreview : copy.preview30}
         </button>
       </div>
-
-      <p className="field-hint">{copy.beatHint}</p>
-
-      <div className="sync-box">
-        <div className="sync-readout">
-          <span>{copy.syncLabel}</span>
-          <strong>{getSyncLabel(copy, syncMode)}</strong>
-        </div>
-        <div className="sync-actions">
-          <button
-            type="button"
-            className="primary-action"
-            disabled={disabled}
-            onClick={onAutoBeatSync}
-          >
-            <TimerReset size={18} />
-            {copy.autoSync}
-          </button>
-        </div>
-
-        <details className="advanced-sync">
-          <summary>{copy.advancedSyncLabel}</summary>
-          <div className="advanced-sync-content">
-            <p className="field-hint">{copy.advancedSyncHint}</p>
-            <div className="sync-actions">
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={disabled || !canMarkFirstBeat}
-                onClick={onMarkFirstBeat}
-              >
-                <Crosshair size={18} />
-                {copy.markBeat}
-              </button>
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={firstBeatSourceSec === null}
-                onClick={onClearFirstBeat}
-              >
-                <RotateCcw size={18} />
-                {copy.clearSync}
-              </button>
-            </div>
-
-            <div className="offset-controls">
-              <label className="field">
-                <span>{copy.offsetLabel}</span>
-                <input
-                  type="number"
-                  min="-1500"
-                  max="1500"
-                  step="5"
-                  value={offsetMs}
-                  disabled={disabled}
-                  onChange={(event) => setOffsetMs(Number(event.target.value))}
-                />
-              </label>
-              <p className="field-hint">{copy.offsetHint}</p>
-              <div className="nudge-row">
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={disabled}
-                  onClick={() => setOffsetMs(offsetMs - 25)}
-                >
-                  <Minus size={16} />
-                  25 ms
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={disabled}
-                  onClick={() => setOffsetMs(0)}
-                >
-                  <RotateCcw size={16} />
-                  {copy.zero}
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  disabled={disabled}
-                  onClick={() => setOffsetMs(offsetMs + 25)}
-                >
-                  <Plus size={16} />
-                  25 ms
-                </button>
-              </div>
-            </div>
-          </div>
-        </details>
-      </div>
     </section>
   );
-}
-
-function getSyncLabel(
-  copy: AppCopy["preview"],
-  syncMode: SyncMode,
-): string {
-  if (syncMode === "auto") {
-    return copy.syncStatusAuto;
-  }
-
-  if (syncMode === "manual") {
-    return copy.syncStatusManual;
-  }
-
-  return copy.syncStatusNone;
 }

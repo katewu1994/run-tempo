@@ -12,7 +12,7 @@ type MetronomePanelProps = {
 };
 
 const CLICK_STYLES: ClickStyle[] = ["soft", "sharp", "wood"];
-const ACCENTS: AccentEvery[] = [0, 2, 4, 8];
+const ACCENTS: AccentEvery[] = [0, 2, 4];
 
 export function MetronomePanel({
   settings,

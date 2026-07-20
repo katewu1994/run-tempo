@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { analyzeSingleTrackBpm } from "./audio/analyzeSingleTrackBpm";
 import { estimateAutoBeatSync } from "./audio/autoBeatSync";
-import { getFirstBeatOffsetMs } from "./audio/beatSync";
 import {
   getClickTempoBpm,
   getClickTempoOptions,
@@ -26,7 +25,6 @@ import type { SingleTrackBpmAnalysis } from "./audio/singleTrackBpmTypes";
 import type { LoadedAudio, MetronomeSettings } from "./audio/types";
 import { BpmPanel } from "./components/BpmPanel";
 import { ExportPanel } from "./components/ExportPanel";
-import { MetronomePanel } from "./components/MetronomePanel";
 import { MultiTrackPlanner } from "./components/MultiTrackPlanner";
 import { PreviewPanel } from "./components/PreviewPanel";
 import { UploadPanel } from "./components/UploadPanel";
@@ -35,9 +33,7 @@ import { APP_COPY, type AppCopy } from "./i18n";
 import { downloadBlob } from "./utils/downloadBlob";
 
 type AnalysisStatus = "idle" | "loading" | "analyzing" | "complete" | "failed";
-type PlaybackMode = "idle" | "original" | "metronome" | "mix";
-type SyncMode = "none" | "auto" | "manual";
-type GainRole = "song" | "metronome";
+type PlaybackMode = "idle" | "mix";
 type ErrorKey = keyof AppCopy["errors"];
 type AppMode = "single" | "multi";
 
@@ -57,7 +53,6 @@ const ANALYSIS_TIMEOUT_ERROR = "analysis-timeout";
 function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const playbackRef = useRef<PlaybackHandle | null>(null);
-  const playbackStartTimeRef = useRef<number | null>(null);
   const songGainNodeRef = useRef<GainNode | null>(null);
   const metronomeGainNodeRef = useRef<GainNode | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
@@ -72,17 +67,15 @@ function App() {
   const [clickRelation, setClickRelation] =
     useState<ClickTempoRelation>("1:1");
   const [targetBpm, setTargetBpm] = useState(DEFAULT_TARGET_BPM);
-  const [songGain, setSongGain] = useState(0.85);
+  const [masterGain, setMasterGain] = useState(1);
   const [metronomeSettings, setMetronomeSettings] = useState<MetronomeSettings>({
     targetBpm: DEFAULT_TARGET_BPM,
-    volume: 0.35,
-    clickStyle: "soft",
-    accentEvery: 4,
+    volume: 1,
+    clickStyle: "sharp",
+    accentEvery: 2,
     offsetMs: 0,
   });
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("idle");
-  const [firstBeatSourceSec, setFirstBeatSourceSec] = useState<number | null>(null);
-  const [syncMode, setSyncMode] = useState<SyncMode>("none");
   const [errorKey, setErrorKey] = useState<ErrorKey | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -164,12 +157,15 @@ function App() {
   );
 
   useEffect(() => {
-    setLiveGain(songGainNodeRef.current, songGain);
-  }, [songGain]);
+    setLiveGain(songGainNodeRef.current, masterGain);
+  }, [masterGain]);
 
   useEffect(() => {
-    setLiveGain(metronomeGainNodeRef.current, metronomeSettings.volume);
-  }, [metronomeSettings.volume]);
+    setLiveGain(
+      metronomeGainNodeRef.current,
+      metronomeSettings.volume * masterGain,
+    );
+  }, [masterGain, metronomeSettings.volume]);
 
   const applyAutoBeatSync = useCallback(
     (
@@ -184,8 +180,6 @@ function App() {
       );
 
       if (!sync) {
-        setFirstBeatSourceSec(null);
-        setSyncMode("none");
         setMetronomeSettings((settings) => ({
           ...settings,
           targetBpm: nextClickBpm,
@@ -194,8 +188,6 @@ function App() {
         return false;
       }
 
-      setFirstBeatSourceSec(sync.firstBeatSourceSec);
-      setSyncMode("auto");
       setMetronomeSettings((settings) => ({
         ...settings,
         targetBpm: nextClickBpm,
@@ -248,61 +240,8 @@ function App() {
 
     songGainNodeRef.current = null;
     metronomeGainNodeRef.current = null;
-    playbackStartTimeRef.current = null;
     setPlaybackMode("idle");
   }, []);
-
-  const playBuffer = useCallback(
-    async (
-      buffer: AudioBuffer,
-      mode: PlaybackMode,
-      gainRole: GainRole,
-      gainValue: number,
-    ) => {
-      const audioContext = await getAudioContext();
-      stopPlayback();
-
-      const source = audioContext.createBufferSource();
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = clampVolume(gainValue);
-      source.buffer = buffer;
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      const playback: PlaybackHandle = { sources: [source] };
-      if (gainRole === "song") {
-        playback.songGainNode = gainNode;
-        songGainNodeRef.current = gainNode;
-      } else {
-        playback.metronomeGainNode = gainNode;
-        metronomeGainNodeRef.current = gainNode;
-      }
-
-      source.onended = () => {
-        source.onended = null;
-        disconnectNode(source);
-        disconnectNode(gainNode);
-
-        if (playbackRef.current === playback) {
-          playbackRef.current = null;
-          if (gainRole === "song") {
-            songGainNodeRef.current = null;
-          } else {
-            metronomeGainNodeRef.current = null;
-          }
-          playbackStartTimeRef.current = null;
-          setPlaybackMode("idle");
-        }
-      };
-      const startTime = audioContext.currentTime;
-
-      playbackRef.current = playback;
-      playbackStartTimeRef.current = startTime;
-      setPlaybackMode(mode);
-      source.start(startTime);
-    },
-    [getAudioContext, stopPlayback],
-  );
 
   const playLayeredBuffers = useCallback(
     async (
@@ -351,7 +290,6 @@ function App() {
         playbackRef.current = null;
         songGainNodeRef.current = null;
         metronomeGainNodeRef.current = null;
-        playbackStartTimeRef.current = null;
         setPlaybackMode("idle");
       };
 
@@ -362,7 +300,6 @@ function App() {
       playbackRef.current = playback;
       songGainNodeRef.current = songGainNode;
       metronomeGainNodeRef.current = metronomeGainNode;
-      playbackStartTimeRef.current = startTime;
       setPlaybackMode(mode);
       songSource.start(startTime);
       metronomeSource.start(startTime);
@@ -385,8 +322,6 @@ function App() {
       setBpmAnalysis(null);
       setSelectedDetector(null);
       setClickRelation("1:1");
-      setFirstBeatSourceSec(null);
-      setSyncMode("none");
       setMetronomeSettings((settings) => ({ ...settings, offsetMs: 0 }));
 
       let decoded: LoadedAudio;
@@ -505,7 +440,7 @@ function App() {
         nextSourceClickBpm * nextTempoRatio * 10,
       ) / 10;
 
-      if (loadedAudio && syncMode !== "manual") {
+      if (loadedAudio) {
         applyAutoBeatSync(
           loadedAudio.audioBuffer,
           nextTempoRatio,
@@ -517,23 +452,14 @@ function App() {
       setMetronomeSettings((settings) => ({
         ...settings,
         targetBpm: nextClickBpm,
-        offsetMs:
-          firstBeatSourceSec !== null
-            ? getFirstBeatOffsetMs(
-                firstBeatSourceSec,
-                nextTempoRatio,
-                nextClickBpm,
-              )
-            : settings.offsetMs,
+        offsetMs: 0,
       }));
     },
     [
       applyAutoBeatSync,
-      firstBeatSourceSec,
       loadedAudio,
       playbackMode,
       stopPlayback,
-      syncMode,
       targetBpm,
     ],
   );
@@ -608,78 +534,12 @@ function App() {
     [getAudioContext, metronomeSettings],
   );
 
-  const handlePlayMetronome = useCallback(async () => {
-    if (playbackMode === "metronome") {
-      stopPlayback();
-      return;
-    }
-
-    const metronome = await createCurrentMetronome(12, undefined, 1);
-    await playBuffer(
-      metronome,
-      "metronome",
-      "metronome",
-      metronomeSettings.volume,
-    );
-  }, [
-    createCurrentMetronome,
-    metronomeSettings.volume,
-    playBuffer,
-    playbackMode,
-    stopPlayback,
-  ]);
-
   const handleMetronomeSettingsChange = useCallback(
-    async (nextSettings: MetronomeSettings) => {
+    (nextSettings: MetronomeSettings) => {
       setMetronomeSettings(nextSettings);
-
-      if (playbackMode !== "metronome") {
-        return;
-      }
-
-      const audioContext = await getAudioContext();
-      const metronome = createMetronomeBuffer(
-        audioContext,
-        12,
-        audioContext.sampleRate,
-        { ...nextSettings, volume: 1 },
-      );
-      await playBuffer(
-        metronome,
-        "metronome",
-        "metronome",
-        nextSettings.volume,
-      );
     },
-    [getAudioContext, playBuffer, playbackMode],
+    [],
   );
-
-  const handlePlayOriginal = useCallback(async () => {
-    if (!loadedAudio) {
-      return;
-    }
-
-    if (playbackMode === "original") {
-      stopPlayback();
-      return;
-    }
-
-    const audioContext = await getAudioContext();
-    const tempoAdjustedSong = resampleTempo(
-      audioContext,
-      loadedAudio.audioBuffer,
-      tempoRatio,
-    );
-    await playBuffer(tempoAdjustedSong, "original", "song", songGain);
-  }, [
-    getAudioContext,
-    loadedAudio,
-    playBuffer,
-    playbackMode,
-    songGain,
-    stopPlayback,
-    tempoRatio,
-  ]);
 
   const playMixPreview = useCallback(async (
     previewSongGain: number,
@@ -729,8 +589,8 @@ function App() {
   ]);
 
   const handlePlayMixPreview = useCallback(
-    () => playMixPreview(songGain, metronomeSettings.volume),
-    [metronomeSettings.volume, playMixPreview, songGain],
+    () => playMixPreview(masterGain, metronomeSettings.volume * masterGain),
+    [masterGain, metronomeSettings.volume, playMixPreview],
   );
 
   const handleAuditionBpmCandidate = useCallback(
@@ -757,7 +617,7 @@ function App() {
       audioContext,
       tempoAdjustedSong,
       metronome,
-      songGain,
+      masterGain,
     );
     const blob = audioBufferToWavBlob(mixed);
     downloadBlob(
@@ -769,74 +629,9 @@ function App() {
     getAudioContext,
     loadedAudio,
     metronomeSettings.targetBpm,
-    songGain,
+    masterGain,
     tempoRatio,
   ]);
-
-  const handleMarkFirstBeat = useCallback(async () => {
-    if (!loadedAudio || (playbackMode !== "original" && playbackMode !== "mix")) {
-      return;
-    }
-
-    const playbackStartTime = playbackStartTimeRef.current;
-    if (playbackStartTime === null) {
-      return;
-    }
-
-    const audioContext = await getAudioContext();
-    const playbackSec = Math.max(0, audioContext.currentTime - playbackStartTime);
-    const sourceSec = playbackSec * tempoRatio;
-    const offsetMs = getFirstBeatOffsetMs(
-      sourceSec,
-      tempoRatio,
-      metronomeSettings.targetBpm,
-    );
-
-    setFirstBeatSourceSec(sourceSec);
-    setSyncMode("manual");
-    setMetronomeSettings((settings) => ({ ...settings, offsetMs }));
-  }, [
-    getAudioContext,
-    loadedAudio,
-    metronomeSettings.targetBpm,
-    playbackMode,
-    tempoRatio,
-  ]);
-
-  const handleAutoBeatSync = useCallback(() => {
-    if (!loadedAudio) {
-      return;
-    }
-
-    if (clickBpm === null) {
-      return;
-    }
-
-    const didSync = applyAutoBeatSync(
-      loadedAudio.audioBuffer,
-      tempoRatio,
-      matchedClickBpm ?? targetBpm,
-    );
-
-    setErrorKey(didSync ? null : "autoSyncInconclusive");
-  }, [
-    applyAutoBeatSync,
-    clickBpm,
-    loadedAudio,
-    matchedClickBpm,
-    targetBpm,
-    tempoRatio,
-  ]);
-
-  const handleClearFirstBeat = useCallback(() => {
-    setFirstBeatSourceSec(null);
-    setSyncMode("none");
-    setMetronomeSettings((settings) => ({ ...settings, offsetMs: 0 }));
-  }, []);
-
-  const handleOffsetMsChange = useCallback((offsetMs: number) => {
-    setMetronomeSettings((settings) => ({ ...settings, offsetMs }));
-  }, []);
 
   const handleClickVolumeChange = useCallback((volume: number) => {
     setMetronomeSettings((settings) => ({ ...settings, volume }));
@@ -971,40 +766,23 @@ function App() {
               ) : null}
 
               {currentStep === 3 ? (
-                <MetronomePanel
-                  settings={metronomeSettings}
-                  isPlaying={playbackMode === "metronome"}
+                <PreviewPanel
+                  playbackMode={playbackMode}
                   disabled={!loadedAudio}
-                  copy={copy.metronome}
-                  onSettingsChange={handleMetronomeSettingsChange}
-                  onPreview={handlePlayMetronome}
+                  masterGain={masterGain}
+                  metronomeVolume={metronomeSettings.volume}
+                  copy={copy.preview}
+                  metronomeCopy={copy.metronome}
+                  metronomeSettings={metronomeSettings}
+                  onMasterGainChange={setMasterGain}
+                  onClickVolumeChange={handleClickVolumeChange}
+                  onMetronomeSettingsChange={handleMetronomeSettingsChange}
+                  onPlayMixPreview={handlePlayMixPreview}
+                  onStop={stopPlayback}
                 />
               ) : null}
 
               {currentStep === 4 ? (
-                <PreviewPanel
-                  playbackMode={playbackMode}
-                  disabled={!loadedAudio}
-                  songGain={songGain}
-                  clickVolume={metronomeSettings.volume}
-                  firstBeatSourceSec={firstBeatSourceSec}
-                  offsetMs={metronomeSettings.offsetMs}
-                  syncMode={syncMode}
-                  canMarkFirstBeat={playbackMode === "original" || playbackMode === "mix"}
-                  copy={copy.preview}
-                  onSongGainChange={setSongGain}
-                  onClickVolumeChange={handleClickVolumeChange}
-                  onPlayOriginal={handlePlayOriginal}
-                  onPlayMixPreview={handlePlayMixPreview}
-                  onStop={stopPlayback}
-                  onAutoBeatSync={handleAutoBeatSync}
-                  onMarkFirstBeat={handleMarkFirstBeat}
-                  onClearFirstBeat={handleClearFirstBeat}
-                  onOffsetMsChange={handleOffsetMsChange}
-                />
-              ) : null}
-
-              {currentStep === 5 ? (
                 <ExportPanel
                   disabled={!canExport}
                   fileName={exportFileName}
@@ -1065,7 +843,7 @@ function getFlowSteps({
   copy: AppCopy;
 }): FlowStep[] {
   const cadenceReady = hasAudio && hasSourceBpm;
-  const isPreviewing = playbackMode === "original" || playbackMode === "mix";
+  const isPreviewing = playbackMode === "mix";
 
   return [
     {
@@ -1086,12 +864,6 @@ function getFlowSteps({
     },
     {
       number: 3,
-      label: copy.flow.labels.adjustClick,
-      status: cadenceReady ? copy.flow.statuses.ready : copy.flow.statuses.locked,
-      state: cadenceReady ? "ready" : "locked",
-    },
-    {
-      number: 4,
       label: copy.flow.labels.previewMix,
       status: isPreviewing
         ? copy.flow.statuses.playing
@@ -1101,7 +873,7 @@ function getFlowSteps({
       state: isPreviewing ? "current" : cadenceReady ? "ready" : "locked",
     },
     {
-      number: 5,
+      number: 4,
       label: copy.flow.labels.export,
       status: canExport ? copy.flow.statuses.ready : copy.flow.statuses.locked,
       state: canExport ? "ready" : "locked",
@@ -1114,14 +886,6 @@ function getAppStatus(
   playbackMode: PlaybackMode,
   copy: AppCopy,
 ): string {
-  if (playbackMode === "metronome") {
-    return copy.status.playingClick;
-  }
-
-  if (playbackMode === "original") {
-    return copy.status.playingSong;
-  }
-
   if (playbackMode === "mix") {
     return copy.status.previewingMix;
   }
@@ -1154,7 +918,7 @@ function clampVolume(value: number): number {
     return 0;
   }
 
-  return Math.max(0, Math.min(1, value));
+  return Math.max(0, Math.min(4, value));
 }
 
 function setLiveGain(gainNode: GainNode | null, value: number): void {
