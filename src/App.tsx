@@ -742,7 +742,10 @@ function App() {
           />
           <span className="brand-copy">
             <span className="brand-name">RunTempo</span>
-            <span className="brand-slogan">Run in rhythm. Move with purpose.</span>
+            <span className="brand-slogan">
+              <strong>Run in rhythm.</strong>
+              <strong>Move with purpose.</strong>
+            </span>
           </span>
         </div>
         <div className="mode-switcher" aria-label={copy.modes.ariaLabel}>
