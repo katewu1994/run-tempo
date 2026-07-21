@@ -742,7 +742,7 @@ function App() {
           />
           <span className="brand-copy">
             <span className="brand-name">RunTempo</span>
-            <span className="brand-slogan">Cadence studio</span>
+            <span className="brand-slogan">Run in rhythm. Move with purpose.</span>
           </span>
         </div>
         <div className="mode-switcher" aria-label={copy.modes.ariaLabel}>
