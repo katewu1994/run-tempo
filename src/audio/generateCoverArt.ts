@@ -3,8 +3,13 @@ import type { WavArtwork } from "./exportWav";
 export type GeneratedCoverInput = {
   title: string;
   artist: string;
-  bpm: number;
+  bpm?: number;
   hue?: number;
+  kicker?: string;
+  badge?: string;
+  artistLabel?: string;
+  template?: "default" | "multi_track_plan";
+  durationLabel?: string;
 };
 
 export type GeneratedCoverTheme = {
@@ -81,8 +86,17 @@ function drawCover(
   context.fillStyle = `hsl(${hue} 92% 72%)`;
   context.font = '700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   context.letterSpacing = "5px";
-  context.fillText("RUN TEMPO · GENERATED COVER", 92, 120);
+  context.fillText(
+    input.kicker?.trim() || "RUN TEMPO · GENERATED COVER",
+    92,
+    120,
+  );
   context.letterSpacing = "0px";
+
+  if (input.template === "multi_track_plan") {
+    drawMultiTrackPlanCover(context, input, hue);
+    return;
+  }
 
   const title = input.title.trim() || "Untitled";
   const titleLayout = fitText(context, title, 816, 3, 104, 58);
@@ -101,14 +115,16 @@ function drawCover(
 
     context.fillStyle = "rgb(255 255 255 / 0.68)";
     context.font = '600 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    context.fillText("ARTIST", 92, 752);
+    context.fillText(input.artistLabel?.trim() || "ARTIST", 92, 752);
 
     context.fillStyle = "#ffffff";
     context.font = '650 49px -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif';
     context.fillText(artist, 92, 794, 620);
   }
 
-  const bpmText = `${formatBpm(input.bpm)} BPM`;
+  const bpmText =
+    input.badge?.trim() ||
+    (typeof input.bpm === "number" ? `${formatBpm(input.bpm)} BPM` : "RUN MIX");
   context.font = '750 38px ui-monospace, "SFMono-Regular", Menlo, monospace';
   const bpmWidth = context.measureText(bpmText).width + 54;
   roundRect(context, COVER_SIZE - 92 - bpmWidth, 775, bpmWidth, 76, 38);
@@ -119,6 +135,28 @@ function drawCover(
   context.textBaseline = "middle";
   context.fillText(bpmText, COVER_SIZE - 92 - bpmWidth / 2, 813);
   context.textAlign = "start";
+}
+
+function drawMultiTrackPlanCover(
+  context: CanvasRenderingContext2D,
+  input: GeneratedCoverInput,
+  hue: number,
+): void {
+  const duration = input.durationLabel?.trim() || "0 min";
+
+  context.fillStyle = "#ffffff";
+  context.font = '700 76px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.letterSpacing = "8px";
+  context.fillText("PLAN MODE", COVER_SIZE / 2, 432);
+
+  context.fillStyle = `hsl(${hue} 92% 72%)`;
+  context.font = '750 148px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  context.letterSpacing = "0px";
+  context.fillText(duration, COVER_SIZE / 2, 565);
+  context.textAlign = "start";
+  context.textBaseline = "alphabetic";
 }
 
 function fitText(

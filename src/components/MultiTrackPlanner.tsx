@@ -19,6 +19,7 @@ import { analyzeMusicalKey } from "../audio/analyzeMusicalKey";
 import { normalizeTrackEnergy } from "../audio/energyNormalization";
 import { audioBufferToWavBlob } from "../audio/exportWav";
 import { extractEnergyStructure, extractRawEnergyFeatures } from "../audio/extractEnergyFeatures";
+import { generateCoverArtwork } from "../audio/generateCoverArt";
 import type { TrackAudioMap, TrackFileMap } from "../audio/multiTrackTypes";
 import { renderExecutableMixPlan } from "../audio/renderExecutableMixPlan";
 import {
@@ -63,7 +64,10 @@ import {
 } from "../planning/editSelectionPlan";
 import { formatPercent } from "../utils/format";
 import { CandidateScoreTable } from "./CandidateScoreTable";
-import { ExecutableMixPlanView } from "./ExecutableMixPlanView";
+import {
+  ExecutableMixPlanView,
+  type MultiTrackExportSettings,
+} from "./ExecutableMixPlanView";
 import { MixTrackListView } from "./MixTrackListView";
 import { RunningPlanSelector } from "./RunningPlanSelector";
 import { TrackFeatureTable } from "./TrackFeatureTable";
@@ -121,6 +125,7 @@ type PlannerError =
 type PlannerRunState = "ready" | "running" | "complete" | "failed";
 type PlannerEngine = "auto" | "gpt" | "local";
 type PlannerResultSource = "gpt" | "local" | null;
+type RenderIntent = "export";
 
 type MultiTrackPlannerProps = {
   copy: MultiTrackCopy;
@@ -134,7 +139,6 @@ export function MultiTrackPlanner({
   statusCopy,
 }: MultiTrackPlannerProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
-  const renderedPlaybackSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const importRequestIdRef = useRef(0);
   const [currentStep, setCurrentStep] = useState(1);
   const [tracks, setTracks] = useState<TrackFeature[]>([]);
@@ -172,17 +176,13 @@ export function MultiTrackPlanner({
   const [renderedMixBuffer, setRenderedMixBuffer] = useState<AudioBuffer | null>(
     null,
   );
-  const [isRendering, setIsRendering] = useState(false);
+  const [renderIntent, setRenderIntent] = useState<RenderIntent | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const isRendering = renderIntent !== null;
 
   useEffect(() => {
     return () => {
       importRequestIdRef.current += 1;
-      try {
-        renderedPlaybackSourceRef.current?.stop();
-      } catch {
-        // Preview may already have ended.
-      }
       const audioContext = audioContextRef.current;
       if (audioContext && audioContext.state !== "closed") {
         void audioContext.close().catch(() => {
@@ -220,12 +220,25 @@ export function MultiTrackPlanner({
     () => formatAnalysisMessage(analysisMessage, copy.upload),
     [analysisMessage, copy.upload],
   );
+  const importProgress = useMemo(() => {
+    if (analysisMessage?.kind === "processing") {
+      return Math.round((analysisMessage.current / analysisMessage.total) * 100);
+    }
+
+    return analysisMessage?.kind === "preparing" ? 0 : null;
+  }, [analysisMessage]);
   const errorText = useMemo(
     () => formatPlannerError(error, copy),
     [copy, error],
   );
   const canScore = tracks.length > 0 && !isAnalyzing;
   const hasTracks = tracks.length > 0;
+  const isClickReviewComplete = useMemo(
+    () =>
+      hasTracks &&
+      tracks.every((track) => track.embeddedClickStatus !== "suspected"),
+    [hasTracks, tracks],
+  );
   const scoredCandidateGroups = useMemo<CandidateGroup[]>(
     () =>
       hasTracks
@@ -258,6 +271,7 @@ export function MultiTrackPlanner({
     () =>
       getMultiTrackFlowSteps({
         hasTracks,
+        isClickReviewComplete,
         hasCandidates,
         hasSelection,
         hasExecutable,
@@ -274,6 +288,7 @@ export function MultiTrackPlanner({
       currentStep,
       hasCandidates,
       hasExecutable,
+      isClickReviewComplete,
       hasSelection,
       hasTracks,
       isApplyingPlan,
@@ -284,11 +299,11 @@ export function MultiTrackPlanner({
   const goToStep = (stepNumber: number) => {
     const step = flowSteps.find((item) => item.number === stepNumber);
 
-    if (step && step.state !== "locked") {
+    if (!isRendering && step && step.state !== "locked") {
       setCurrentStep(stepNumber);
     }
   };
-  const canGoBack = currentStep > 1;
+  const canGoBack = currentStep > 1 && !isRendering;
   const canGoNext =
     currentStep === 1
       ? hasTracks && !isAnalyzing
@@ -308,26 +323,7 @@ export function MultiTrackPlanner({
     copy.stepHints[currentStep as keyof MultiTrackCopy["stepHints"]] ??
     copy.stepHints[1];
 
-  const stopRenderedPreview = () => {
-    if (!renderedPlaybackSourceRef.current) {
-      return;
-    }
-
-    const source = renderedPlaybackSourceRef.current;
-    renderedPlaybackSourceRef.current = null;
-    source.onended = null;
-
-    try {
-      source.stop();
-    } catch {
-      // The source may already have ended.
-    }
-
-    source.disconnect();
-  };
-
   const resetRenderedOutput = () => {
-    stopRenderedPreview();
     setRenderedMixBuffer(null);
     setRenderError(null);
   };
@@ -505,6 +501,10 @@ export function MultiTrackPlanner({
         duplicates: duplicateCount,
         invalidNames: 0,
       });
+
+      if (importedTracks.length > 0) {
+        setCurrentStep(2);
+      }
 
       if (failures > 0) {
         setError({ kind: "decodeFailures", count: failures });
@@ -820,67 +820,55 @@ export function MultiTrackPlanner({
       return null;
     }
 
-    setIsRendering(true);
-    setRenderError(null);
-
-    try {
-      const audioContext = await getAudioContext();
-      const renderedBuffer = await renderExecutableMixPlan({
-        audioContext,
-        trackAudioMap: selectedTrackAudioMap,
-        plan,
-      });
-
-      setRenderedMixBuffer(renderedBuffer);
-      return renderedBuffer;
-    } catch (renderingError) {
-      console.error(renderingError);
-      setRenderError(copy.executable.renderError);
-      return null;
-    } finally {
-      setIsRendering(false);
-    }
-  };
-
-  const playRenderedMix = async (buffer: AudioBuffer) => {
     const audioContext = await getAudioContext();
-    const source = audioContext.createBufferSource();
+    const renderedBuffer = await renderExecutableMixPlan({
+      audioContext,
+      trackAudioMap: selectedTrackAudioMap,
+      plan,
+    });
 
-    stopRenderedPreview();
-    source.buffer = buffer;
-    source.connect(audioContext.destination);
-    source.onended = () => {
-      if (renderedPlaybackSourceRef.current === source) {
-        renderedPlaybackSourceRef.current = null;
-      }
-
-      source.disconnect();
-    };
-    source.start();
-    renderedPlaybackSourceRef.current = source;
+    setRenderedMixBuffer(renderedBuffer);
+    return renderedBuffer;
   };
 
-  const handleRenderMixPreview = async () => {
-    const renderedBuffer = await renderMixBuffer();
-
-    if (renderedBuffer) {
-      await playRenderedMix(renderedBuffer);
-    }
-  };
-
-  const handleExportMixWav = async () => {
+  const handleExportMixWav = async ({
+    fileName,
+    artworkFile,
+    generatedCoverInput,
+  }: MultiTrackExportSettings) => {
     if (!executablePlan) {
       return;
     }
 
-    const renderedBuffer = renderedMixBuffer ?? (await renderMixBuffer(executablePlan));
+    setRenderIntent("export");
+    setRenderError(null);
 
-    if (!renderedBuffer) {
-      return;
+    try {
+      await waitForNextPaint();
+      const renderedBuffer =
+        renderedMixBuffer ?? (await renderMixBuffer(executablePlan));
+
+      if (!renderedBuffer) {
+        return;
+      }
+
+      const artwork = artworkFile
+        ? {
+            data: new Uint8Array(await artworkFile.arrayBuffer()),
+            mimeType: artworkFile.type || "image/jpeg",
+          }
+        : await generateCoverArtwork(generatedCoverInput);
+      const blob = audioBufferToWavBlob(renderedBuffer, {
+        title: fileName.replace(/\.wav$/i, ""),
+        artwork,
+      });
+      downloadBlob(blob, fileName);
+    } catch (renderingError) {
+      console.error(renderingError);
+      setRenderError(copy.executable.renderError);
+    } finally {
+      setRenderIntent(null);
     }
-
-    const blob = audioBufferToWavBlob(renderedBuffer);
-    downloadBlob(blob, createMultiTrackWavFileName(executablePlan.mixTitle));
   };
 
   return (
@@ -931,7 +919,11 @@ export function MultiTrackPlanner({
                       <p>{copy.upload.standardizedHint}</p>
                     </div>
                   </div>
-                  <label className="drop-zone compact-drop-zone multi-drop-zone">
+                  <label
+                    className={`drop-zone compact-drop-zone multi-drop-zone${
+                      isAnalyzing ? " is-importing" : ""
+                    }`}
+                  >
                     <input
                       {...DIRECTORY_INPUT_PROPS}
                       type="file"
@@ -954,6 +946,27 @@ export function MultiTrackPlanner({
                       </strong>
                       <small>{copy.upload.standardizedFileRule}</small>
                     </span>
+                    {isAnalyzing ? (
+                      <span
+                        className="multi-import-progress"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <span className="multi-import-progress-copy">
+                          <LoaderCircle size={16} aria-hidden="true" />
+                          <span>
+                            {analysisMessageText ?? copy.upload.analyzingAudio}
+                          </span>
+                          <b>{importProgress ?? 0}%</b>
+                        </span>
+                        <span
+                          className="multi-import-progress-track"
+                          aria-hidden="true"
+                        >
+                          <span style={{ width: `${importProgress ?? 0}%` }} />
+                        </span>
+                      </span>
+                    ) : null}
                   </label>
                   <div className="format-row" aria-label={copy.upload.formatsAria}>
                     <span>MP3</span>
@@ -967,13 +980,23 @@ export function MultiTrackPlanner({
                   <div className="library-import-footer">
                     {tracks.length > 0 ? (
                       <dl className="multi-library-compact-summary">
-                        <div>
+                        <div className="library-summary-card library-summary-total">
                           <dt>{copy.upload.librarySummary.total}</dt>
-                          <dd>{libraryStats.total}</dd>
+                          <dd>
+                            <strong>{libraryStats.total}</strong>
+                            <small>
+                              {libraryStats.finished} {copy.upload.librarySummary.finished}
+                              <i>·</i>
+                              {libraryStats.raw} {copy.upload.librarySummary.raw}
+                            </small>
+                          </dd>
                         </div>
-                        <div>
+                        <div className="library-summary-card library-summary-cadence">
                           <dt>{copy.upload.librarySummary.cadenceRange}</dt>
-                          <dd>{libraryStats.cadenceRange}</dd>
+                          <dd>
+                            <strong>{libraryStats.cadenceRange}</strong>
+                            <small>{copy.upload.cadenceRangeHint(libraryStats.total)}</small>
+                          </dd>
                         </div>
                       </dl>
                     ) : null}
@@ -990,9 +1013,6 @@ export function MultiTrackPlanner({
                     ) : null}
                   </div>
 
-                  {analysisMessageText ? (
-                    <p className="planner-status">{analysisMessageText}</p>
-                  ) : null}
                   {errorText ? <p className="error-text">{errorText}</p> : null}
                 </div>
               </section>
@@ -1062,14 +1082,14 @@ export function MultiTrackPlanner({
 
             {currentStep === 5 && executablePlan ? (
               <ExecutableMixPlanView
-                tracks={tracks}
                 executablePlan={executablePlan}
+                planModeLabel={copy.runningPlan.modes[planSettings.mode]}
+                planningDirectionLabel={copy.variants.names[activeVariantId]}
                 copy={copy.executable}
                 isRendering={isRendering}
-                renderedDurationSec={renderedMixBuffer?.duration ?? null}
+                renderIntent={renderIntent}
                 renderError={renderError}
-                onRenderPreview={() => void handleRenderMixPreview()}
-                onExportWav={() => void handleExportMixWav()}
+                onExportWav={(settings) => void handleExportMixWav(settings)}
               />
             ) : null}
           </div>
@@ -1378,6 +1398,7 @@ function formatAnalysisMessage(
 
 function getMultiTrackFlowSteps({
   hasTracks,
+  isClickReviewComplete,
   hasCandidates,
   hasSelection,
   hasExecutable,
@@ -1386,6 +1407,7 @@ function getMultiTrackFlowSteps({
   statusCopy,
 }: {
   hasTracks: boolean;
+  isClickReviewComplete: boolean;
   hasCandidates: boolean;
   hasSelection: boolean;
   hasExecutable: boolean;
@@ -1403,8 +1425,16 @@ function getMultiTrackFlowSteps({
     {
       number: 2,
       label: copy.flow.labels.confirmTracks,
-      status: hasTracks ? statusCopy.ready : statusCopy.locked,
-      state: hasTracks ? "ready" : "locked",
+      status: isClickReviewComplete
+        ? statusCopy.done
+        : hasTracks
+          ? statusCopy.ready
+          : statusCopy.locked,
+      state: isClickReviewComplete
+        ? "complete"
+        : hasTracks
+          ? "ready"
+          : "locked",
     },
     {
       number: 3,
@@ -1540,23 +1570,12 @@ function createTrackId(
   return `${Date.now()}-${sourceKind}-${index}-${safeName}`;
 }
 
-function createMultiTrackWavFileName(planTitle: string): string {
-  const safeTitle =
-    planTitle
-      .trim()
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9._-]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 80) || "mix";
-  const now = new Date();
-  const yyyy = now.getFullYear().toString();
-  const MM = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const HH = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-
-  return `run-tempo_${safeTitle}_${yyyy}${MM}${dd}_${HH}${mm}.wav`;
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(resolve, 0);
+    });
+  });
 }
 
 function withTimeout<T>(

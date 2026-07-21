@@ -15,7 +15,6 @@ const en = {
     previewingMix: "Previewing mix",
     readyToPreview: "Ready to preview",
     loadAudioToStart: "Load audio to start",
-    planningMode: "Planning mode",
   },
   modes: {
     ariaLabel: "Mixing mode",
@@ -301,9 +300,9 @@ const en = {
       labels: {
         loadTracks: "Load tracks",
         confirmTracks: "Confirm tracks",
-        buildPlan: "Plan & coverage",
-        reviewCandidates: "Rules & coverage",
-        reviewPlan: "Choose & edit",
+        buildPlan: "Build plan",
+        reviewCandidates: "Review rules",
+        reviewPlan: "Review mix",
         export: "Export",
       },
     },
@@ -326,7 +325,7 @@ const en = {
       },
       5: {
         title: "Preview and export",
-        hint: "Review the final timeline, preview the mix, or export it as WAV.",
+        hint: "Confirm the plan identity, customize its cover, preview the audio, and export the WAV.",
       },
     },
     upload: {
@@ -362,6 +361,8 @@ const en = {
       preparingFiles: (count: number) => `Preparing ${count} file(s)...`,
       processingFile: (current: number, total: number, fileName: string) =>
         `Importing ${current}/${total}: ${fileName}`,
+      cadenceRangeHint: (count: number) =>
+        `Detected across ${count} imported track${count === 1 ? "" : "s"}`,
       importedTracks: (
         added: number,
         total: number,
@@ -665,10 +666,12 @@ const en = {
     },
     executable: {
       eyebrow: "Mix ready",
-      title: "Your mix",
+      title: "Preview and export",
       summary: {
         mixTitle: "Mix title",
+        planMode: "Plan mode",
         totalDuration: "Total duration",
+        planningDirection: "Planning direction",
       },
       headers: {
         block: "Block",
@@ -691,7 +694,39 @@ const en = {
         `${seconds.toFixed(1)}s crossfade`,
       renderMix: "Render Mix",
       renderPreview: "Preview",
+      stopPreview: "Stop preview",
       renderingMix: "Preparing...",
+      renderingExport: "Preparing WAV...",
+      preparingPreview: "Preparing audio preview",
+      preparingExport: "Preparing WAV export",
+      renderingHint:
+        "Applying tempo changes and adding the metronome. This may take a moment.",
+      exportSettingsEyebrow: "Export settings",
+      exportSettingsTitle: "File name and cover",
+      exportSettingsHint:
+        "The plan identity drives both the default file name and generated cover.",
+      defaultNameLabel: "Default name",
+      defaultNameRule: "Plan mode · time · planning direction",
+      fileNameLabel: "File name",
+      fileNamePlaceholder: "Enter a WAV file name",
+      fileNameHint: (fileName: string) => `Output: ${fileName}`,
+      coverTitle: "Album cover",
+      coverHint: "The template or uploaded JPEG/PNG is embedded in the WAV.",
+      noCover: "No cover",
+      generatedCoverAlt: "Generated multi-track plan cover",
+      coverPreviewAlt: "Selected cover image",
+      coverDirectionLabel: "PLANNING DIRECTION",
+      coverKicker: (planMode: string) => `RUN TEMPO · ${planMode.toUpperCase()} PLAN`,
+      coverSource: (custom: boolean): string =>
+        custom ? "Custom uploaded image" : "Generated from the default name",
+      coverColor: "Template color",
+      colorPickerLabel: "Choose a template color",
+      coverColorOption: (hue: number) => `Template color ${hue}`,
+      uploadCover: "Upload cover",
+      replaceCover: "Replace",
+      removeCover: "Remove",
+      output: "Output",
+      outputHint: "WAV · template or uploaded cover embedded.",
       exportWav: "Export WAV",
       renderReady: (duration: string) => `Rendered preview ready: ${duration}.`,
       renderError: "Unable to render this mix.",
@@ -727,7 +762,6 @@ const ja: AppCopy = {
     previewingMix: "ミックスを試聴中",
     readyToPreview: "試聴できます",
     loadAudioToStart: "曲を読み込んで始めましょう",
-    planningMode: "プランニングモード",
   },
   modes: {
     ariaLabel: "ミックスモード",
@@ -1018,9 +1052,9 @@ const ja: AppCopy = {
       labels: {
         loadTracks: "曲を読み込む",
         confirmTracks: "読み込み曲を確認",
-        buildPlan: "プランと対応状況",
-        reviewCandidates: "ルールと対応状況",
-        reviewPlan: "選択・編集",
+        buildPlan: "プランを作成",
+        reviewCandidates: "ルールを確認",
+        reviewPlan: "ミックスを確認",
         export: "書き出し",
       },
     },
@@ -1043,7 +1077,7 @@ const ja: AppCopy = {
       },
       5: {
         title: "試聴して書き出す",
-        hint: "最終タイムラインを確認し、試聴またはWAV書き出しを行います。",
+        hint: "プラン情報を確認し、カバーを調整して、試聴またはWAV書き出しを行います。",
       },
     },
     upload: {
@@ -1079,6 +1113,8 @@ const ja: AppCopy = {
       preparingFiles: (count: number) => `${count}個のファイルを準備中…`,
       processingFile: (current: number, total: number, fileName: string) =>
         `読み込み中 ${current}/${total}: ${fileName}`,
+      cadenceRangeHint: (count: number) =>
+        `${count}曲の読み込み済みトラックから検出`,
       importedTracks: (
         added: number,
         total: number,
@@ -1380,10 +1416,12 @@ const ja: AppCopy = {
     },
     executable: {
       eyebrow: "ミックス完成",
-      title: "作成したミックス",
+      title: "試聴と書き出し",
       summary: {
         mixTitle: "ミックスタイトル",
+        planMode: "プランモード",
         totalDuration: "合計時間",
+        planningDirection: "プラン方向",
       },
       headers: {
         block: "ブロック",
@@ -1406,7 +1444,39 @@ const ja: AppCopy = {
         `${seconds.toFixed(1)}秒クロスフェード`,
       renderMix: "ミックスを書き出す",
       renderPreview: "試聴",
+      stopPreview: "試聴を停止",
       renderingMix: "準備中…",
+      renderingExport: "WAVを準備中…",
+      preparingPreview: "試聴用オーディオを準備中",
+      preparingExport: "WAVファイルを準備中",
+      renderingHint:
+        "テンポ変更とメトロノームの追加を処理しています。しばらくお待ちください。",
+      exportSettingsEyebrow: "書き出し設定",
+      exportSettingsTitle: "ファイル名とカバー画像",
+      exportSettingsHint:
+        "プラン情報をもとに、既定のファイル名とカバー画像を作成します。",
+      defaultNameLabel: "既定の名前",
+      defaultNameRule: "プランモード・時間・プラン方向",
+      fileNameLabel: "ファイル名",
+      fileNamePlaceholder: "WAVファイル名を入力",
+      fileNameHint: (fileName: string) => `出力: ${fileName}`,
+      coverTitle: "アルバムカバー",
+      coverHint: "テンプレートまたはJPEG/PNG画像をWAVに埋め込みます。",
+      noCover: "カバーなし",
+      generatedCoverAlt: "複数曲プランから生成したカバー画像",
+      coverPreviewAlt: "選択したカバー画像",
+      coverDirectionLabel: "プラン方向",
+      coverKicker: (planMode: string) => `RUN TEMPO・${planMode.toUpperCase()} PLAN`,
+      coverSource: (custom: boolean) =>
+        custom ? "アップロード画像" : "既定の名前から生成",
+      coverColor: "テンプレートカラー",
+      colorPickerLabel: "テンプレートカラーを選択",
+      coverColorOption: (hue: number) => `テンプレートカラー ${hue}`,
+      uploadCover: "画像を選択",
+      replaceCover: "変更",
+      removeCover: "削除",
+      output: "出力",
+      outputHint: "WAV · テンプレートまたはアップロードしたカバー画像を埋め込みます。",
       exportWav: "WAVを書き出す",
       renderReady: (duration: string) => `試聴用レンダー完了: ${duration}`,
       renderError: "このミックスをレンダーできませんでした。",

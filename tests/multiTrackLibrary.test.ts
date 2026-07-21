@@ -26,6 +26,10 @@ import { createMixPlanVariants } from "../src/planning/createMixPlanVariants";
 import {
   moveSelection,
 } from "../src/planning/editSelectionPlan";
+import {
+  createMultiTrackDefaultName,
+  normalizeMultiTrackWavFileName,
+} from "../src/utils/multiTrackExport";
 
 const runningPlan: RunningPlan = {
   planId: "test",
@@ -43,6 +47,24 @@ const runningPlan: RunningPlan = {
     },
   ],
 };
+
+test("multi-track export name uses plan mode, time, and planning direction", () => {
+  assert.equal(
+    createMultiTrackDefaultName("Constant", 15 * 60, "Balanced"),
+    "Constant_15min_Balanced",
+  );
+  assert.equal(
+    createMultiTrackDefaultName("Intervals", 30 * 60 + 15, "Energy flow"),
+    "Intervals_30m15s_Energy-flow",
+  );
+  assert.equal(
+    normalizeMultiTrackWavFileName(
+      "Constant/15min:Balanced",
+      "Constant_15min_Balanced.wav",
+    ),
+    "Constant_15min_Balanced.wav",
+  );
+});
 
 test("standardized cadence is read from Single Track output names", () => {
   assert.equal(parseStandardizedTrackCadence("Morning Run_180bpm.wav"), 180);

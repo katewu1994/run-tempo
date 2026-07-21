@@ -1,38 +1,120 @@
-import { AlertTriangle, Download, Layers, Play } from "lucide-react";
-import type { ExecutableMixPlan, TrackFeature } from "../domain/mixTypes";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  ImagePlus,
+  Layers,
+  LoaderCircle,
+  Palette,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  createGeneratedCoverTheme,
+  type GeneratedCoverInput,
+} from "../audio/generateCoverArt";
+import type { ExecutableMixPlan } from "../domain/mixTypes";
 import { formatDuration, formatSeconds } from "../utils/format";
 import {
-  formatCadenceTarget,
-  getLocalizedStretchDecision,
-  type MultiTrackCopy,
-} from "./multiTrackFormat";
+  createMultiTrackDefaultName,
+  normalizeMultiTrackWavFileName,
+} from "../utils/multiTrackExport";
+import { type MultiTrackCopy } from "./multiTrackFormat";
+
+const COVER_COLOR_OPTIONS = [267, 218, 176, 118, 30, 52, 2, 346, 294, 194, 148, 338];
 
 type ExecutableMixPlanViewProps = {
-  tracks: TrackFeature[];
   executablePlan: ExecutableMixPlan;
+  planModeLabel: string;
+  planningDirectionLabel: string;
   copy: MultiTrackCopy["executable"];
   isRendering: boolean;
-  renderedDurationSec: number | null;
+  renderIntent: "export" | null;
   renderError: string | null;
-  onRenderPreview: () => void;
-  onExportWav: () => void;
+  onExportWav: (settings: MultiTrackExportSettings) => void;
+};
+
+export type MultiTrackExportSettings = {
+  fileName: string;
+  artworkFile: File | null;
+  generatedCoverInput: GeneratedCoverInput;
 };
 
 export function ExecutableMixPlanView({
-  tracks,
   executablePlan,
+  planModeLabel,
+  planningDirectionLabel,
   copy,
   isRendering,
-  renderedDurationSec,
+  renderIntent,
   renderError,
-  onRenderPreview,
   onExportWav,
 }: ExecutableMixPlanViewProps) {
-  const tracksById = new Map(tracks.map((track) => [track.trackId, track]));
   const warnings = getRenderWarnings(executablePlan, copy);
+  const defaultName = useMemo(
+    () =>
+      createMultiTrackDefaultName(
+        planModeLabel,
+        executablePlan.totalDurationSec,
+        planningDirectionLabel,
+      ),
+    [executablePlan.totalDurationSec, planModeLabel, planningDirectionLabel],
+  );
+  const defaultFileName = `${defaultName}.wav`;
+  const [fileName, setFileName] = useState(defaultFileName);
+  const [artworkFile, setArtworkFile] = useState<File | null>(null);
+  const [coverHue, setCoverHue] = useState(218);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const artworkPreviewUrl = useMemo(
+    () => (artworkFile ? URL.createObjectURL(artworkFile) : null),
+    [artworkFile],
+  );
+  const resolvedFileName = normalizeMultiTrackWavFileName(
+    fileName,
+    defaultFileName,
+  );
+  const coverDurationLabel = useMemo(
+    () => formatCoverDuration(executablePlan.totalDurationSec),
+    [executablePlan.totalDurationSec],
+  );
+  const generatedCoverInput = useMemo<GeneratedCoverInput>(
+    () => ({
+      title: "PLAN MODE",
+      artist: "",
+      kicker: "RUN TEMPO",
+      template: "multi_track_plan",
+      durationLabel: coverDurationLabel,
+      hue: coverHue,
+    }),
+    [coverDurationLabel, coverHue],
+  );
+  const generatedCoverTheme = useMemo(
+    () => createGeneratedCoverTheme(generatedCoverInput),
+    [generatedCoverInput],
+  );
+
+  useEffect(() => {
+    setFileName(defaultFileName);
+    setArtworkFile(null);
+    setCoverHue(218);
+    setIsColorPickerOpen(false);
+  }, [defaultFileName]);
+
+  useEffect(
+    () => () => {
+      if (artworkPreviewUrl) {
+        URL.revokeObjectURL(artworkPreviewUrl);
+      }
+    },
+    [artworkPreviewUrl],
+  );
 
   return (
-    <section className="panel planner-panel" aria-labelledby="executable-title">
+    <section
+      className="panel planner-panel executable-mix-panel"
+      aria-labelledby="executable-title"
+      aria-busy={isRendering}
+    >
       <div className="panel-heading">
         <div>
           <span className="eyebrow">{copy.eyebrow}</span>
@@ -41,23 +123,20 @@ export function ExecutableMixPlanView({
         <Layers aria-hidden="true" />
       </div>
 
-      <dl className="summary-grid planner-summary">
+      <dl className="multi-export-plan-summary">
+        <div>
+          <dt>{copy.summary.planMode}</dt>
+          <dd>{planModeLabel}</dd>
+        </div>
         <div>
           <dt>{copy.summary.totalDuration}</dt>
           <dd>{formatDuration(executablePlan.totalDurationSec)}</dd>
         </div>
+        <div>
+          <dt>{copy.summary.planningDirection}</dt>
+          <dd>{planningDirectionLabel}</dd>
+        </div>
       </dl>
-
-      <ol className="simple-mix-list">
-        {executablePlan.blocks.map((block) => (
-          <li key={block.blockId}>
-            <span>{tracksById.get(block.trackId)?.fileName ?? block.trackId}</span>
-            <small>
-              {formatDuration(block.mixStartSec)}–{formatDuration(block.mixEndSec)}
-            </small>
-          </li>
-        ))}
-      </ol>
 
       {warnings.length > 0 ? (
         <div className="render-warning-list" role="status">
@@ -70,35 +149,183 @@ export function ExecutableMixPlanView({
         </div>
       ) : null}
 
-      <div className="action-grid compact render-actions">
-        <button
-          type="button"
-          className="secondary-action"
-          disabled={isRendering}
-          onClick={onRenderPreview}
-        >
-          <Play size={18} aria-hidden="true" />
-          {isRendering ? copy.renderingMix : copy.renderPreview}
-        </button>
+      <section
+        className="multi-export-editor"
+        aria-label={copy.exportSettingsTitle}
+      >
+        <div className="multi-export-controls">
+          <section className="multi-cover-designer" aria-label={copy.coverTitle}>
+            <div className="cover-art-preview multi-cover-preview" aria-live="polite">
+              {artworkPreviewUrl ? (
+                <img src={artworkPreviewUrl} alt={copy.coverPreviewAlt} />
+              ) : (
+                <div
+                  className="generated-cover-preview multi-plan-cover-preview"
+                  style={
+                    {
+                      background: generatedCoverTheme.background,
+                      "--generated-cover-accent": generatedCoverTheme.accent,
+                    } as CSSProperties
+                  }
+                  aria-label={copy.generatedCoverAlt}
+                >
+                  <span className="generated-cover-kicker">RUN TEMPO</span>
+                  <strong>
+                    <span>PLAN MODE</span>
+                    <span>{coverDurationLabel}</span>
+                  </strong>
+                </div>
+              )}
+            </div>
+
+            <div className="multi-cover-controls">
+              <div className="cover-art-actions">
+                <label
+                  className={`secondary-action cover-upload-action${
+                    isRendering ? " is-disabled" : ""
+                  }`}
+                >
+                  <ImagePlus size={16} aria-hidden="true" />
+                  {artworkFile ? copy.replaceCover : copy.uploadCover}
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    disabled={isRendering}
+                    onChange={(event) => {
+                      setArtworkFile(event.target.files?.[0] ?? null);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                {!artworkFile ? (
+                  <div className="cover-color-control">
+                    <button
+                      type="button"
+                      className="secondary-action cover-color-trigger"
+                      aria-expanded={isColorPickerOpen}
+                      aria-controls="multi-cover-color-palette"
+                      aria-label={copy.coverColor}
+                      title={copy.coverColor}
+                      disabled={isRendering}
+                      style={{ "--swatch-hue": coverHue } as CSSProperties}
+                      onClick={() => setIsColorPickerOpen((isOpen) => !isOpen)}
+                    >
+                      <Palette size={16} aria-hidden="true" />
+                    </button>
+                    {isColorPickerOpen ? (
+                      <div
+                        id="multi-cover-color-palette"
+                        className="cover-color-palette"
+                        role="group"
+                        aria-label={copy.colorPickerLabel}
+                      >
+                        <span>{copy.colorPickerLabel}</span>
+                        <div>
+                          {COVER_COLOR_OPTIONS.map((hue) => (
+                            <button
+                              key={hue}
+                              type="button"
+                              className={coverHue === hue ? "selected" : ""}
+                              style={{ "--swatch-hue": hue } as CSSProperties}
+                              aria-label={copy.coverColorOption(hue)}
+                              aria-pressed={coverHue === hue}
+                              onClick={() => {
+                                setCoverHue(hue);
+                                setIsColorPickerOpen(false);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={isRendering}
+                    onClick={() => {
+                      setArtworkFile(null);
+                      setIsColorPickerOpen(false);
+                    }}
+                  >
+                    <X size={16} aria-hidden="true" />
+                    {copy.removeCover}
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <div className="multi-export-file-panel">
+            <label className="export-field multi-export-file-name">
+              <span>{copy.fileNameLabel}</span>
+              <input
+                type="text"
+                value={fileName}
+                maxLength={160}
+                disabled={isRendering}
+                placeholder={copy.fileNamePlaceholder}
+                onChange={(event) => setFileName(event.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div className="export-ready-card multi-export-ready-card">
+        <div className="export-ready-icon">
+          <CheckCircle2 size={22} aria-hidden="true" />
+        </div>
+        <div className="export-target">
+          <span>{copy.output}</span>
+          <strong>{resolvedFileName}</strong>
+          <small>{copy.outputHint}</small>
+        </div>
         <button
           type="button"
           className="primary-action"
           disabled={isRendering}
-          onClick={onExportWav}
+          onClick={() =>
+            onExportWav({
+              fileName: resolvedFileName,
+              artworkFile,
+              generatedCoverInput,
+            })
+          }
         >
-          <Download size={18} aria-hidden="true" />
-          {copy.exportWav}
+          {renderIntent === "export" ? (
+            <LoaderCircle className="action-spinner" size={18} aria-hidden="true" />
+          ) : (
+            <Download size={18} aria-hidden="true" />
+          )}
+          {renderIntent === "export" ? copy.renderingExport : copy.exportWav}
         </button>
       </div>
 
-      {renderedDurationSec !== null ? (
-        <p className="planner-status">
-          {copy.renderReady(formatDuration(renderedDurationSec))}
-        </p>
+      {isRendering && renderIntent ? (
+        <div className="mix-render-loading" role="status" aria-live="polite">
+          <span className="mix-render-loading-icon" aria-hidden="true">
+            <LoaderCircle />
+          </span>
+          <span className="mix-render-loading-copy">
+            <strong>
+              {copy.preparingExport}
+            </strong>
+            <small>{copy.renderingHint}</small>
+          </span>
+        </div>
       ) : null}
+
       {renderError ? <p className="error-text">{renderError}</p> : null}
     </section>
   );
+}
+
+function formatCoverDuration(totalDurationSec: number): string {
+  const minutes = Math.round((totalDurationSec / 60) * 10) / 10;
+  return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)} min`;
 }
 
 function getRenderWarnings(

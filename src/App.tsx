@@ -29,7 +29,9 @@ import type { SingleTrackBpmAnalysis } from "./audio/singleTrackBpmTypes";
 import type { LoadedAudio, MetronomeSettings } from "./audio/types";
 import { BpmPanel } from "./components/BpmPanel";
 import { ExportPanel } from "./components/ExportPanel";
-import { MultiTrackPlanner } from "./components/MultiTrackPlanner";
+import {
+  MultiTrackPlanner,
+} from "./components/MultiTrackPlanner";
 import { PreviewPanel } from "./components/PreviewPanel";
 import { UploadPanel } from "./components/UploadPanel";
 import { WorkflowGuide, type FlowStep } from "./components/WorkflowGuide";
@@ -135,8 +137,15 @@ function App() {
     () => getAppStatus(loadedAudio !== null, playbackMode, copy),
     [copy, loadedAudio, playbackMode],
   );
+  const isSingleTrackPlaying = playbackMode !== "idle";
+  const isActivePlayback =
+    appMode === "single"
+      ? isSingleTrackPlaying
+      : false;
   const visibleAppStatus =
-    appMode === "multi" ? copy.status.planningMode : appStatus;
+    appMode === "single"
+      ? appStatus
+      : copy.status.loadAudioToStart;
   const isStepUnlocked = useCallback(
     (stepNumber: number) => {
       const step = flowSteps.find((item) => item.number === stepNumber);
@@ -697,8 +706,6 @@ function App() {
   const stepHint =
     copy.stepHints[currentStep as keyof AppCopy["stepHints"]] ?? copy.stepHints[1];
 
-  const isPlaying = playbackMode !== "idle";
-
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -740,14 +747,20 @@ function App() {
           </button>
         </div>
         <div className="header-utilities">
-          {isPlaying && appMode === "single" ? (
-            <button type="button" className="transport-stop" onClick={stopPlayback}>
+          {isActivePlayback ? (
+            <button
+              type="button"
+              className="transport-stop"
+              onClick={() => {
+                stopPlayback();
+              }}
+            >
               <Square size={11} aria-hidden="true" />
               Stop
             </button>
           ) : null}
           <div
-            className={`status-chip${isPlaying && appMode === "single" ? " live" : ""}`}
+            className={`status-chip${isActivePlayback ? " live" : ""}`}
             role="status"
           >
             <span className="status-dot" aria-hidden="true" />
@@ -784,10 +797,6 @@ function App() {
                 ariaLabel={copy.flow.ariaLabel}
                 onSelect={goToStep}
               />
-              <p className="sidebar-note">
-                <ShieldCheck size={15} aria-hidden="true" />
-                Audio is processed on-device after it is loaded.
-              </p>
             </aside>
 
             <div className="stage">
