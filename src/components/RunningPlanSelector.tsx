@@ -66,10 +66,6 @@ export function RunningPlanSelector({
     });
   };
 
-  const updateDuration = (durationMin: number) => {
-    updateConstant("durationMin", durationMin);
-  };
-
   const updateCustomPart = (
     partId: string,
     change: Partial<RunningPlanSettings["custom"]["parts"][number]>,
@@ -399,10 +395,6 @@ function getModeIcon(mode: RunningPlanMode) {
   }
 
   return Gauge;
-}
-
-function formatCadence(value: number): string {
-  return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }
 
 function normalizeInputValue(

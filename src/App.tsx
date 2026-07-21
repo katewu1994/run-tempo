@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AudioLines,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  Sparkles,
   Square,
 } from "lucide-react";
 import { analyzeSingleTrackBpm } from "./audio/analyzeSingleTrackBpm";
@@ -36,6 +38,11 @@ import { PreviewPanel } from "./components/PreviewPanel";
 import { UploadPanel } from "./components/UploadPanel";
 import { WorkflowGuide, type FlowStep } from "./components/WorkflowGuide";
 import { APP_COPY, type AppCopy } from "./i18n";
+import {
+  getPlannerApiStatus,
+  PLANNER_API_BASE_URL,
+  type PlannerApiStatus,
+} from "./planning/plannerClient";
 import { downloadBlob } from "./utils/downloadBlob";
 import {
   loadSingleTrackSessionSettings,
@@ -46,6 +53,7 @@ type AnalysisStatus = "idle" | "loading" | "analyzing" | "complete" | "failed";
 type PlaybackMode = "idle" | "mix";
 type ErrorKey = keyof AppCopy["errors"];
 type AppMode = "single" | "multi";
+type GptApiConnectionState = "checking" | PlannerApiStatus["status"];
 
 type PlaybackHandle = {
   sources: AudioBufferSourceNode[];
@@ -97,6 +105,10 @@ function App() {
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("idle");
   const [errorKey, setErrorKey] = useState<ErrorKey | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
+  const [gptApiConnection, setGptApiConnection] = useState<{
+    status: GptApiConnectionState;
+    model: string | null;
+  }>({ status: "checking", model: null });
 
   const copy = APP_COPY;
   const error = errorKey ? copy.errors[errorKey] : null;
@@ -166,6 +178,26 @@ function App() {
 
   useEffect(() => {
     document.documentElement.lang = "en";
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 7000);
+    let isMounted = true;
+
+    void getPlannerApiStatus(PLANNER_API_BASE_URL, controller.signal).then(
+      (result) => {
+        if (isMounted) {
+          setGptApiConnection(result);
+        }
+      },
+    );
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -760,15 +792,30 @@ function App() {
             </button>
           ) : null}
           <div
-            className={`status-chip${isActivePlayback ? " live" : ""}`}
+            className={`status-chip audio-status-chip${isActivePlayback ? " live" : ""}`}
             role="status"
+            aria-live="polite"
+            aria-label={visibleAppStatus}
+            title={visibleAppStatus}
           >
-            <span className="status-dot" aria-hidden="true" />
-            {visibleAppStatus}
+            <AudioLines size={15} strokeWidth={2.2} aria-hidden="true" />
           </div>
-          <span className="local-processing">
-            <ShieldCheck size={13} aria-hidden="true" />
-            On-device
+          <span
+            className={`gpt-api-status ${gptApiConnection.status}`}
+            role="status"
+            aria-live="polite"
+            aria-label={copy.status.gptApi[gptApiConnection.status]}
+            title={gptApiConnection.model ?? undefined}
+          >
+            <span className="gpt-api-status-icon" aria-hidden="true">
+              <Sparkles size={12} strokeWidth={2.2} />
+            </span>
+            <span className="gpt-api-status-label" aria-hidden="true">
+              {copy.status.gptApi[gptApiConnection.status]}
+            </span>
+            <span className="gpt-api-status-label-short" aria-hidden="true">
+              {copy.status.gptApiShort[gptApiConnection.status]}
+            </span>
           </span>
         </div>
       </header>
@@ -797,6 +844,15 @@ function App() {
                 ariaLabel={copy.flow.ariaLabel}
                 onSelect={goToStep}
               />
+              <div className="workflow-local-processing">
+                <span className="workflow-local-processing-icon" aria-hidden="true">
+                  <ShieldCheck size={15} strokeWidth={2.1} />
+                </span>
+                <span>
+                  <strong>On-device</strong>
+                  <small>Audio processing stays in your browser</small>
+                </span>
+              </div>
             </aside>
 
             <div className="stage">

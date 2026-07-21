@@ -136,7 +136,7 @@ The backend validates incoming planner requests with zod. GPT-5.6 Terra output i
 - unknown track IDs are removed
 - selections are limited to `rules.maxTracksPerSegment`
 - mismatched BPM interpretations are corrected to the candidate score interpretation
-- over-stretch selections are replaced by within-budget candidates when the segment has any candidate inside `maxStretchPercent`
+- selections outside the frontend's precomputed candidate pool are removed
 - invalid JSON or unrecoverable output returns `502`
 
 GPT-5.6 Terra must not calculate stretch ratio, exact block durations, source timestamps, or mix timestamps.

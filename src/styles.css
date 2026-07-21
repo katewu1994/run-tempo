@@ -205,6 +205,71 @@ p {
   white-space: nowrap;
 }
 
+.gpt-api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(246, 246, 248, 0.92);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.gpt-api-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--text-muted);
+}
+
+.gpt-api-status-label-short {
+  display: none;
+}
+
+.gpt-api-status.checking {
+  border-color: rgba(0, 113, 227, 0.2);
+  color: var(--accent);
+}
+
+.gpt-api-status.checking .gpt-api-status-icon {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--accent);
+  animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+.gpt-api-status.connected {
+  border-color: rgba(38, 147, 83, 0.28);
+  background: rgba(38, 147, 83, 0.06);
+  color: #1f7a46;
+}
+
+.gpt-api-status.connected .gpt-api-status-icon {
+  background: rgba(38, 147, 83, 0.12);
+  color: #1f7a46;
+}
+
+.gpt-api-status.unavailable {
+  border-color: rgba(217, 45, 32, 0.25);
+  background: rgba(217, 45, 32, 0.05);
+  color: var(--danger);
+}
+
+.gpt-api-status.unavailable .gpt-api-status-icon {
+  background: rgba(217, 45, 32, 0.11);
+  color: var(--danger);
+}
+
 /* Mode switcher — segmented control in the top bar */
 .mode-switcher {
   display: inline-flex;
@@ -260,17 +325,6 @@ p {
   min-width: 0;
 }
 
-.local-processing {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
 .status-chip {
   display: inline-flex;
   align-items: center;
@@ -286,12 +340,12 @@ p {
   box-shadow: var(--shadow-soft);
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--text-soft);
+.audio-status-chip {
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--text-soft);
 }
 
 .status-chip.live {
@@ -299,8 +353,7 @@ p {
   color: var(--accent);
 }
 
-.status-chip.live .status-dot {
-  background: var(--accent);
+.audio-status-chip.live svg {
   animation: pulse-dot 1.1s ease-in-out infinite;
 }
 
@@ -438,6 +491,50 @@ p {
   font-size: 11.5px;
   font-weight: 700;
   color: var(--accent);
+}
+
+.workflow-local-processing {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 2px;
+  padding: 10px 11px;
+  border: 1px solid rgba(0, 113, 227, 0.12);
+  border-radius: 12px;
+  background:
+    linear-gradient(110deg, rgba(0, 113, 227, 0.055), transparent 66%),
+    rgba(255, 255, 255, 0.66);
+  color: var(--text-muted);
+}
+
+.workflow-local-processing-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 9px;
+  background: rgba(0, 113, 227, 0.09);
+  color: var(--accent);
+}
+
+.workflow-local-processing > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.workflow-local-processing strong {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.workflow-local-processing small {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--text-soft);
 }
 
 .stepper-marks {
@@ -5137,10 +5234,6 @@ input[type="range"]::-moz-range-thumb {
     grid-template-columns: 1fr 1fr;
   }
 
-  .local-processing {
-    display: none;
-  }
-
   .brand-slogan {
     display: none;
   }
@@ -5189,9 +5282,16 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @media (max-width: 480px) {
-  .status-chip {
-    max-width: 46vw;
-    overflow: hidden;
+  .header-utilities {
+    gap: 6px;
+  }
+
+  .gpt-api-status-label {
+    display: none;
+  }
+
+  .gpt-api-status-label-short {
+    display: inline;
   }
 
   .stepper-label {

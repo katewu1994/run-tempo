@@ -3,7 +3,6 @@ import {
   BpmInterpretationSchema,
   OpenAISelectionPlanSchema,
   PlannerInputSchema,
-  type BpmInterpretation,
   type CandidateScore,
   type OpenAISelectionPlan,
   type PlannerInput,
@@ -189,8 +188,7 @@ function repairSelectionsForSegment({
   usedTrackIds: Set<string>;
 }): TrackSelection[] {
   const maxSelections = input.rules.maxTracksPerSegment;
-  const candidates = getTopCandidates(input, segment.segmentId);
-  const candidatePool = getStretchSafeCandidatePool(candidates, segment);
+  const candidatePool = getTopCandidates(input, segment.segmentId);
   const candidatesByTrackId = new Map(
     candidatePool.map((candidate) => [candidate.trackId, candidate]),
   );
@@ -254,13 +252,6 @@ function repairSelectionsForSegment({
   }
 
   return selections;
-}
-
-function getStretchSafeCandidatePool(
-  candidates: CandidateScore[],
-  _segment: RunSegment,
-): CandidateScore[] {
-  return candidates;
 }
 
 function normalizeMetronomePreference(raw: unknown): TrackSelection["metronomePreference"] {

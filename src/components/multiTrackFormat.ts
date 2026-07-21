@@ -1,7 +1,6 @@
 import type {
   BpmInterpretation,
   CadenceRamp,
-  RunningPlan,
   RunSegment,
   RunSegmentName,
   StretchDecision,
@@ -9,14 +8,6 @@ import type {
 import type { AppCopy } from "../i18n";
 
 export type MultiTrackCopy = AppCopy["multiTrack"];
-
-export function getLocalizedPlanTitle(
-  copy: MultiTrackCopy["runningPlan"],
-  plan: RunningPlan,
-): string {
-  const key = plan.planId as keyof typeof copy.planTitles;
-  return copy.planTitles[key] ?? plan.title;
-}
 
 export function getLocalizedSegmentName(
   segmentNames: MultiTrackCopy["runningPlan"]["segmentNames"],

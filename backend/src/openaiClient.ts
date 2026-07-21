@@ -115,6 +115,61 @@ export function getOpenAIModel(): string {
   return process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
+export type OpenAIConnectionStatus = {
+  status: "connected" | "unavailable";
+  model: string;
+};
+
+export async function checkOpenAIConnection(
+  fetchImpl: typeof fetch = fetch,
+): Promise<OpenAIConnectionStatus> {
+  const model = getOpenAIModel();
+  let apiKey: string;
+  let statusUrl: string;
+
+  try {
+    apiKey = getOpenAIApiKey();
+    statusUrl = getOpenAIModelStatusUrl(model);
+  } catch {
+    return { status: "unavailable", model };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetchImpl(statusUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+    });
+
+    return {
+      status: response.ok ? "connected" : "unavailable",
+      model,
+    };
+  } catch {
+    return { status: "unavailable", model };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function getOpenAIModelStatusUrl(model: string): string {
+  const url = new URL(
+    process.env.OPENAI_BASE_URL?.trim() || RESPONSES_API_URL,
+  );
+  const apiRootPath = url.pathname.replace(/\/responses\/?$/, "").replace(/\/$/, "");
+
+  url.pathname = `${apiRootPath}/models/${encodeURIComponent(model)}`;
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
+}
+
 export async function createOpenAISelectionPlan(
   input: PlannerInput,
 ): Promise<OpenAISelectionPlan> {
@@ -244,31 +299,8 @@ function minimizeCandidate(candidate: CandidateScore, track: TrackFeature | unde
   };
 }
 
-function extractStructuredOutput(response: unknown): unknown {
-  const parsedOutput = findParsedOutput(response);
-
-  if (parsedOutput !== undefined) {
-    return parsedOutput;
-  }
-
-  const responseText = extractResponseText(response);
-  return parseJsonResponse(responseText);
-}
-
-function findParsedOutput(response: unknown): unknown {
-  if (!isRecord(response)) {
-    return undefined;
-  }
-
-  if (response.output_parsed !== undefined) {
-    return response.output_parsed;
-  }
-
-  if (response.parsed !== undefined) {
-    return response.parsed;
-  }
-
-  return undefined;
+export function extractStructuredOutput(response: unknown): unknown {
+  return parseJsonResponse(extractResponseText(response));
 }
 
 function extractResponseText(response: unknown): string {
@@ -286,22 +318,10 @@ function extractResponseText(response: unknown): string {
     return response.output_text;
   }
 
-  if (typeof response.text === "string") {
-    return response.text;
-  }
+  const outputText = extractResponsesApiOutputText(response);
 
-  if (typeof response.text === "function") {
-    const value = response.text();
-
-    if (typeof value === "string") {
-      return value;
-    }
-  }
-
-  const candidateText = extractCandidateText(response);
-
-  if (candidateText) {
-    return candidateText;
+  if (outputText) {
+    return outputText;
   }
 
   throw new PlannerOutputValidationError(
@@ -309,34 +329,34 @@ function extractResponseText(response: unknown): string {
   );
 }
 
-function extractCandidateText(response: Record<string, unknown>): string | null {
-  if (!Array.isArray(response.candidates)) {
+function extractResponsesApiOutputText(
+  response: Record<string, unknown>,
+): string | null {
+  if (!Array.isArray(response.output)) {
     return null;
   }
 
-  for (const candidate of response.candidates) {
-    if (!isRecord(candidate) || !isRecord(candidate.content)) {
-      continue;
-    }
+  const text = response.output
+    .flatMap((item) => {
+      if (!isRecord(item) || !Array.isArray(item.content)) {
+        return [];
+      }
 
-    const parts = candidate.content.parts;
+      return item.content.flatMap((part) =>
+        isRecord(part) &&
+        part.type === "output_text" &&
+        typeof part.text === "string"
+          ? [part.text]
+          : [],
+      );
+    })
+    .join("");
 
-    if (!Array.isArray(parts)) {
-      continue;
-    }
-
-    const text = parts
-      .flatMap((part) =>
-        isRecord(part) && typeof part.text === "string" ? [part.text] : [],
-      )
-      .join("");
-
-    if (text.trim().length > 0) {
-      return text;
-    }
+  if (text.trim().length === 0) {
+    return null;
   }
 
-  return null;
+  return text;
 }
 
 function parseJsonResponse(text: string): unknown {

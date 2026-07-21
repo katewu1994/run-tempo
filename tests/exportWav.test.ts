@@ -6,7 +6,7 @@ import {
 } from "../src/audio/exportWav";
 
 test("export filename uses song title and target BPM", () => {
-  assert.equal(createWavFileName("アイドル", 180), "アイドル_180bpm.wav");
+  assert.equal(createWavFileName("Idol", 180), "Idol_180bpm.wav");
   assert.equal(
     createWavFileName('  Night / Run: "Mix"  ', 172.45),
     "Night _ Run_ _Mix_172.5bpm.wav",
@@ -22,7 +22,7 @@ test("WAV export includes RIFF INFO and ID3 artwork metadata", async () => {
   } as AudioBuffer;
 
   const blob = audioBufferToWavBlob(audioBuffer, {
-    title: "夜のラン",
+    title: "Night Run",
     artist: "Test Artist",
     album: "Test Album",
     artwork: {

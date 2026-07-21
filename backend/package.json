@@ -2,10 +2,12 @@
   "name": "run-tempo-planner",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.ts",
     "setup:youtube": "python3 -m venv .venv && .venv/bin/pip install --upgrade --pre \"yt-dlp[default]\"",
     "start": "node dist/index.js"
   },

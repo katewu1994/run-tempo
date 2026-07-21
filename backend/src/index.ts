@@ -7,6 +7,7 @@ import express from "express";
 import { join, resolve } from "node:path";
 import { ZodError } from "zod";
 import {
+  checkOpenAIConnection,
   createOpenAISelectionPlan,
   OpenAIConfigurationError,
   getOpenAIModel,
@@ -42,6 +43,13 @@ app.get("/health", (_req, res) => {
     model: getOpenAIModel(),
     service: SERVICE_NAME,
   });
+});
+
+app.get("/api/openai/status", async (_req, res) => {
+  const status = await checkOpenAIConnection();
+
+  res.setHeader("Cache-Control", "no-store");
+  res.json(status);
 });
 
 app.post("/api/youtube/import", async (req, res) => {

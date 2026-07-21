@@ -28,6 +28,10 @@ export interface MixPlannerClient {
 }
 
 export type PlannerMode = "mock" | "openai";
+export type PlannerApiStatus = {
+  status: "connected" | "unavailable";
+  model: string | null;
+};
 
 const DEFAULT_DEV_PLANNER_API_BASE_URL = "http://localhost:8080";
 const configuredPlannerApiBaseUrl =
@@ -38,6 +42,38 @@ export const PLANNER_API_BASE_URL =
   (import.meta.env.DEV ? DEFAULT_DEV_PLANNER_API_BASE_URL : "");
 
 export const DEFAULT_PLANNER_MODE: PlannerMode = "openai";
+
+export async function getPlannerApiStatus(
+  baseUrl: string,
+  signal?: AbortSignal,
+): Promise<PlannerApiStatus> {
+  try {
+    const response = await fetch(
+      buildPlannerUrl(baseUrl, "/api/openai/status"),
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        signal,
+      },
+    );
+
+    if (!response.ok) {
+      return { status: "unavailable", model: null };
+    }
+
+    const body = (await response.json()) as unknown;
+
+    if (!isPlannerApiStatus(body)) {
+      return { status: "unavailable", model: null };
+    }
+
+    return body;
+  } catch {
+    return { status: "unavailable", model: null };
+  }
+}
 
 export class MockMixPlannerClient implements MixPlannerClient {
   async createSelectionPlan(input: PlannerInput): Promise<OpenAISelectionPlan> {
@@ -139,6 +175,17 @@ export class HttpMixPlannerClient implements MixPlannerClient {
 function buildPlannerUrl(baseUrl: string, path: string): string {
   const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
   return normalizedBaseUrl ? `${normalizedBaseUrl}${path}` : path;
+}
+
+function isPlannerApiStatus(value: unknown): value is PlannerApiStatus {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    (value.status === "connected" || value.status === "unavailable") &&
+    "model" in value &&
+    (typeof value.model === "string" || value.model === null)
+  );
 }
 
 async function formatPlannerHttpError(response: Response): Promise<string> {

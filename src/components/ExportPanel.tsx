@@ -232,6 +232,7 @@ export function ExportPanel({
                   const file = event.target.files?.[0] ?? null;
                   setCustomArtwork(file);
                   setExportError(null);
+                  event.currentTarget.value = "";
                 }}
               />
             </label>

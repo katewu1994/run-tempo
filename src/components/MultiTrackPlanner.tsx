@@ -5,9 +5,7 @@ import {
   FileAudio,
   FolderOpen,
   LoaderCircle,
-  MousePointerClick,
   Trash2,
-  Volume2,
 } from "lucide-react";
 import { analyzeBpm } from "../audio/analyzeBpm";
 import { estimateAutoBeatSync } from "../audio/autoBeatSync";
@@ -62,21 +60,15 @@ import {
   moveSelection,
   summarizeSelectionPlan,
 } from "../planning/editSelectionPlan";
-import { formatPercent } from "../utils/format";
-import { CandidateScoreTable } from "./CandidateScoreTable";
 import {
   ExecutableMixPlanView,
   type MultiTrackExportSettings,
 } from "./ExecutableMixPlanView";
-import { MixTrackListView } from "./MixTrackListView";
 import { RunningPlanSelector } from "./RunningPlanSelector";
 import { TrackFeatureTable } from "./TrackFeatureTable";
 import { PlanVariantPicker } from "./PlanVariantPicker";
 import { MixPlanEditor } from "./MixPlanEditor";
-import {
-  getLocalizedPlanTitle,
-  type MultiTrackCopy,
-} from "./multiTrackFormat";
+import { type MultiTrackCopy } from "./multiTrackFormat";
 import { WorkflowGuide, type FlowStep } from "./WorkflowGuide";
 
 const DECODE_TIMEOUT_ERROR = "decode-timeout";
@@ -122,8 +114,6 @@ type PlannerError =
   | { kind: "noAudioFiles" }
   | { kind: "planning"; message: string | null };
 
-type PlannerRunState = "ready" | "running" | "complete" | "failed";
-type PlannerEngine = "auto" | "gpt" | "local";
 type PlannerResultSource = "gpt" | "local" | null;
 type RenderIntent = "export";
 
@@ -157,12 +147,8 @@ export function MultiTrackPlanner({
   const [executablePlan, setExecutablePlan] = useState<ExecutableMixPlan | null>(
     null,
   );
-  const [clickSettings, setClickSettings] = useState<MetronomePreference>(
-    DEFAULT_MULTI_TRACK_CLICK_SETTINGS,
-  );
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
-  const [plannerEngine, setPlannerEngine] = useState<PlannerEngine>("auto");
   const [plannerResultSource, setPlannerResultSource] =
     useState<PlannerResultSource>(null);
   const [planVariants, setPlanVariants] = useState<MixPlanVariant[]>([]);
@@ -195,10 +181,6 @@ export function MultiTrackPlanner({
   const selectedPlan = useMemo<RunningPlan>(
     () => buildRunningPlanFromSettings(planSettings),
     [planSettings],
-  );
-  const localizedPlanTitle = useMemo(
-    () => getLocalizedPlanTitle(copy.runningPlan, selectedPlan),
-    [copy.runningPlan, selectedPlan],
   );
   const libraryStats = useMemo(() => {
     const cadences = tracks.flatMap((track) =>
@@ -308,7 +290,7 @@ export function MultiTrackPlanner({
     currentStep === 1
       ? hasTracks && !isAnalyzing
       : currentStep === 2
-        ? hasTracks && !isAnalyzing
+        ? hasTracks && isClickReviewComplete && !isAnalyzing
         : currentStep === 3
         ? hasTracks &&
           canScore &&
@@ -336,16 +318,6 @@ export function MultiTrackPlanner({
     setPlannerResultSource(null);
     setPlanVariants([]);
     setActiveVariantId("balanced");
-    resetRenderedOutput();
-  };
-
-  const handleClickSettingsChange = (settings: MetronomePreference) => {
-    const nextSettings = normalizeRequiredClickSettings(settings);
-
-    setClickSettings(nextSettings);
-    setExecutablePlan((currentPlan) =>
-      currentPlan ? applyClickSettingsToPlan(currentPlan, nextSettings) : null,
-    );
     resetRenderedOutput();
   };
 
@@ -589,7 +561,7 @@ export function MultiTrackPlanner({
         crossfadeSec: DEFAULT_CROSSFADE_SEC,
         allowLoop: true,
       }),
-      clickSettings,
+      DEFAULT_MULTI_TRACK_CLICK_SETTINGS,
     );
     const audioContext = await getAudioContext();
     const nextTrackAudioMap = await loadTrackAudioForPlan(
@@ -678,29 +650,17 @@ export function MultiTrackPlanner({
       let nextSelectionPlan: OpenAISelectionPlan;
       let nextPlannerSource: PlannerResultSource;
 
-      if (plannerEngine === "local") {
-        nextSelectionPlan = await new MockMixPlannerClient().createSelectionPlan(
-          plannerInput,
-        );
-        nextPlannerSource = "local";
-      } else if (plannerEngine === "gpt") {
+      try {
         nextSelectionPlan = await new HttpMixPlannerClient(
           PLANNER_API_BASE_URL,
         ).createSelectionPlan(plannerInput);
         nextPlannerSource = "gpt";
-      } else {
-        try {
-          nextSelectionPlan = await new HttpMixPlannerClient(
-            PLANNER_API_BASE_URL,
-          ).createSelectionPlan(plannerInput);
-          nextPlannerSource = "gpt";
-        } catch (planningError) {
-          console.warn("GPT planner unavailable; using local planner.", planningError);
-          nextSelectionPlan = await new MockMixPlannerClient().createSelectionPlan(
-            plannerInput,
-          );
-          nextPlannerSource = "local";
-        }
+      } catch (planningError) {
+        console.warn("GPT planner unavailable; using local planner.", planningError);
+        nextSelectionPlan = await new MockMixPlannerClient().createSelectionPlan(
+          plannerInput,
+        );
+        nextPlannerSource = "local";
       }
 
       const nextVariants = createMixPlanVariants({
@@ -1131,109 +1091,6 @@ export function MultiTrackPlanner({
   );
 }
 
-function MultiTrackClickPanel({
-  settings,
-  copy,
-  generatedClickBlockCount,
-  embeddedClickBlockCount,
-  onChange,
-}: {
-  settings: MetronomePreference;
-  copy: MultiTrackCopy["click"];
-  generatedClickBlockCount: number;
-  embeddedClickBlockCount: number;
-  onChange: (settings: MetronomePreference) => void;
-}) {
-  const hasGeneratedClick = generatedClickBlockCount > 0;
-
-  return (
-    <section
-      className="panel planner-panel multi-click-panel"
-      aria-labelledby="multi-click-title"
-    >
-      <div className="panel-heading">
-        <div>
-          <span className="eyebrow">{copy.eyebrow}</span>
-          <h2 id="multi-click-title">{copy.title}</h2>
-        </div>
-        <MousePointerClick aria-hidden="true" />
-      </div>
-
-      <dl className="summary-grid planner-summary multi-click-summary">
-        <div>
-          <dt>{copy.summary.status}</dt>
-          <dd>
-            {hasGeneratedClick
-              ? copy.generatedBlocks(generatedClickBlockCount)
-              : copy.summary.embeddedOnly}
-          </dd>
-        </div>
-        <div>
-          <dt>{copy.summary.style}</dt>
-          <dd>
-            {hasGeneratedClick
-              ? copy.clickStyleLabels[settings.clickStyle]
-              : copy.summary.fromSource}
-          </dd>
-        </div>
-        <div>
-          <dt>{copy.summary.accent}</dt>
-          <dd>
-            {hasGeneratedClick
-              ? copy.everyAccent(settings.accentEvery)
-              : copy.summary.fromSource}
-          </dd>
-        </div>
-        <div>
-          <dt>{copy.summary.sync}</dt>
-          <dd>
-            {hasGeneratedClick
-              ? copy.summary.automaticSync
-              : copy.summary.alreadyAligned}
-          </dd>
-        </div>
-        <div>
-          <dt>{copy.summary.volume}</dt>
-          <dd>
-            {hasGeneratedClick
-              ? formatPercent(settings.clickVolume)
-              : copy.summary.fromSource}
-          </dd>
-        </div>
-      </dl>
-
-      {embeddedClickBlockCount > 0 ? (
-        <p className="planner-status">
-          {copy.embeddedBlocks(embeddedClickBlockCount)}
-        </p>
-      ) : null}
-
-      {hasGeneratedClick ? (
-        <label className="range-field">
-          <span>
-            <Volume2 size={16} aria-hidden="true" />
-            {copy.volumeLabel}
-          </span>
-          <input
-            type="range"
-            min={MIN_MULTI_TRACK_CLICK_VOLUME}
-            max="1"
-            step="0.01"
-            value={settings.clickVolume}
-            onChange={(event) =>
-              onChange({
-                ...settings,
-                clickVolume: Number(event.target.value),
-              })
-            }
-          />
-          <output>{formatPercent(settings.clickVolume)}</output>
-        </label>
-      ) : null}
-    </section>
-  );
-}
-
 function applyClickSettingsToPlan(
   plan: ExecutableMixPlan,
   settings: MetronomePreference,
@@ -1348,30 +1205,6 @@ function getBlockPlaybackRate(block: ExecutableMixPlan["blocks"][number]): numbe
   return block.stretchRatio;
 }
 
-function getPlannerRunState({
-  error,
-  hasSelection,
-  isPlanning,
-}: {
-  error: PlannerError | null;
-  hasSelection: boolean;
-  isPlanning: boolean;
-}): PlannerRunState {
-  if (isPlanning) {
-    return "running";
-  }
-
-  if (error?.kind === "planning") {
-    return "failed";
-  }
-
-  if (hasSelection) {
-    return "complete";
-  }
-
-  return "ready";
-}
-
 function formatAnalysisMessage(
   message: AnalysisMessage | null,
   copy: MultiTrackCopy["upload"],
@@ -1475,45 +1308,6 @@ function getMultiTrackFlowSteps({
   ];
 }
 
-function getCanGoNext({
-  currentStep,
-  hasTracks,
-  hasCandidates,
-  hasSelection,
-  hasExecutable,
-  isAnalyzing,
-  isPlanning,
-  canScore,
-  canGenerate,
-}: {
-  currentStep: number;
-  hasTracks: boolean;
-  hasCandidates: boolean;
-  hasSelection: boolean;
-  hasExecutable: boolean;
-  isAnalyzing: boolean;
-  isPlanning: boolean;
-  canScore: boolean;
-  canGenerate: boolean;
-}): boolean {
-  if (currentStep === 1) {
-    return hasTracks && !isAnalyzing;
-  }
-
-  if (currentStep === 2) {
-    return hasTracks && !isAnalyzing;
-  }
-
-  if (currentStep === 3) {
-    return hasTracks && canScore && !isPlanning && canGenerate;
-  }
-
-  if (currentStep === 4) {
-    return hasExecutable && !isPlanning && hasSelection;
-  }
-
-  return false;
-}
 
 function formatPlannerError(
   error: PlannerError | null,
