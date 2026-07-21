@@ -46,7 +46,10 @@ export function WorkflowGuide({
                 </span>
                 <span className="stepper-copy">
                   <span className="stepper-label">{step.label}</span>
-                  <span className="workflow-status">{step.status}</span>
+                  <span className="workflow-status">
+                    <span className="workflow-status-dot" aria-hidden="true" />
+                    {step.status}
+                  </span>
                 </span>
               </button>
             </li>

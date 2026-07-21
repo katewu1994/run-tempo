@@ -22,6 +22,11 @@ import {
   lookupCoverArt,
   parseCoverArtLookup,
 } from "./coverArt.js";
+import {
+  importYoutubeAudio,
+  parseYoutubeUrl,
+  YoutubeImportServiceError,
+} from "./youtubeImport.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const SERVICE_NAME = "run-tempo-planner";
@@ -37,6 +42,40 @@ app.get("/health", (_req, res) => {
     model: getOpenAIModel(),
     service: SERVICE_NAME,
   });
+});
+
+app.post("/api/youtube/import", async (req, res) => {
+  try {
+    const youtubeUrl = parseYoutubeUrl(req.body?.url);
+    const importedAudio = await importYoutubeAudio(youtubeUrl);
+
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader(
+      "X-Audio-Filename",
+      encodeURIComponent(importedAudio.fileName),
+    );
+    res.sendFile(importedAudio.filePath, (sendError) => {
+      void importedAudio.cleanup().catch((cleanupError) => {
+        console.error("Unable to clean up YouTube import", cleanupError);
+      });
+
+      if (sendError && !res.headersSent) {
+        res.status(500).json({ error: "Unable to send imported audio." });
+      }
+    });
+  } catch (error) {
+    const status = error instanceof YoutubeImportServiceError ? error.status : 500;
+    const message =
+      error instanceof YoutubeImportServiceError
+        ? error.message
+        : "Unable to import audio from YouTube.";
+
+    console.error("YouTube import failed", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    res.status(status).json({ error: message });
+  }
 });
 
 app.post("/api/openai/mix-plan", async (req, res) => {
@@ -126,7 +165,10 @@ function getCorsOptionsDelegate(): (
       isSameHostOrigin(origin, req) ||
       (allowLocalDevelopmentOrigins && isLoopbackOrigin(origin))
     ) {
-      callback(null, { origin: true });
+      callback(null, {
+        origin: true,
+        exposedHeaders: ["X-Audio-Filename"],
+      });
       return;
     }
 

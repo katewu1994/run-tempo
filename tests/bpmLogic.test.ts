@@ -106,6 +106,27 @@ test("agreeing Essentia and TempoCNN results can promote a low result", () => {
   assert.equal(merged.isReliable, true);
 });
 
+test("a reliable Essentia result still exposes both detectors after merging", () => {
+  const primary = buildEssentiaConsensus([
+    { bpm: 128, confidence: 4.2, intervalStability: 0.98 },
+    { bpm: 128.2, confidence: 4, intervalStability: 0.97 },
+  ]);
+  const tempoCnn = buildTempoCnnEstimate([
+    { bpm: 128, probability: 0.9 },
+    { bpm: 129, probability: 0.86 },
+  ]);
+  const merged = mergeTempoAnalyses(primary, tempoCnn);
+  const decision = getSingleTrackBpmDecision(merged);
+
+  assert.ok(primary?.isReliable);
+  assert.ok(merged);
+  assert.equal(merged.method, "essentia_tempocnn_hybrid");
+  assert.deepEqual(
+    decision.detectors.map((detector) => detector.source),
+    ["essentia", "tempocnn"],
+  );
+});
+
 test("detector disagreement is never marked as reliable", () => {
   const primary = buildEssentiaConsensus([
     { bpm: 120, confidence: 1.4, intervalStability: 0.9 },

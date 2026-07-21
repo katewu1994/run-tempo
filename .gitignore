@@ -1,4 +1,5 @@
 node_modules/
+.venv/
 dist/
 dist-verify/
 dist-check2/
@@ -12,4 +13,3 @@ dist-check5/
 vite.config.js
 vite.config.d.ts
 .DS_Store
-

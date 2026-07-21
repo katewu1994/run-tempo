@@ -27,7 +27,14 @@ FROM node:22-slim AS runtime
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV STATIC_ASSETS_DIR=/app/public
+ENV PATH="/opt/yt-dlp/bin:${PATH}"
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 python3-venv \
+    && python3 -m venv /opt/yt-dlp \
+    && /opt/yt-dlp/bin/pip install --no-cache-dir --pre "yt-dlp[default]" \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY backend/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

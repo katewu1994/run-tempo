@@ -7,6 +7,7 @@
     "dev": "concurrently -n frontend,backend -c blue,green \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "vite",
     "dev:backend": "npm --prefix backend run dev",
+    "setup:youtube": "npm --prefix backend run setup:youtube",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test:bpm": "node scripts/run-bpm-tests.mjs",
     "test:export": "node scripts/run-export-tests.mjs",

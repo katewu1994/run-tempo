@@ -171,14 +171,13 @@ export async function analyzeSingleTrackChannels(args: {
     }
 
     primary = buildEssentiaConsensus(estimates);
-    if (primary?.isReliable) {
-      return primary;
-    }
   } catch {
     // TempoCNN and the deterministic fallback below still get a chance when
     // the classic beat tracker cannot initialize.
   }
 
+  // Always run the second detector when Essentia is available. Even a strong
+  // classic estimate benefits from an independently visible model result.
   let tempoCnn: TempoCnnEstimate | null = null;
   if (runtime) {
     try {

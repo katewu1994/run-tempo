@@ -47,7 +47,7 @@ const en = {
   stepHints: {
     1: {
       title: "Load your song",
-      hint: "Pick an audio file from your device. It stays on your computer; nothing is uploaded.",
+      hint: "Choose a local audio file or import an authorized track from YouTube.",
     },
     2: {
       title: "Set your pace",
@@ -71,9 +71,38 @@ const en = {
   upload: {
     stepLabel: "Step 1",
     title: "Load song",
+    sourceAria: "Choose an audio source",
+    loadedLabel: "Ready to analyze",
+    tabs: {
+      youtube: "YouTube",
+      youtubeHint: "Paste a link",
+      local: "Audio file",
+      localHint: "From your device",
+    },
     loading: "Reading audio...",
     chooseAudio: "Choose audio file",
     hint: "Works with MP3, WAV, M4A and AAC files.",
+    or: "or",
+    local: {
+      kicker: "Private and on-device",
+      title: "Upload an audio file",
+      hint: "Your local file stays in this browser throughout the process.",
+      dropHint: "Drop a file here or click to browse",
+      formatsAria: "Supported audio formats",
+    },
+    youtube: {
+      kicker: "Direct import",
+      title: "Import from YouTube",
+      hint: "Paste a video or YouTube Music link and we’ll prepare the audio for BPM analysis.",
+      urlLabel: "YouTube URL",
+      placeholder: "https://www.youtube.com/watch?v=…",
+      action: "Import audio",
+      importing: "Importing…",
+      failed: "Unable to import this YouTube link.",
+      permissionNote:
+        "Only import music you own or have permission to use. Videos must be under 15 minutes.",
+      supportedLinks: "YouTube · YouTube Music · youtu.be",
+    },
     meta: {
       file: "File",
       duration: "Duration",
@@ -599,7 +628,7 @@ const ja: AppCopy = {
   stepHints: {
     1: {
       title: "曲を読み込む",
-      hint: "お使いの端末から曲を選びます。曲はこのパソコンの中だけで処理され、外部には送信されません。",
+      hint: "端末の音声ファイルを選ぶか、利用許可のある曲をYouTubeから読み込みます。",
     },
     2: {
       title: "走るペースを決める",
@@ -626,9 +655,38 @@ const ja: AppCopy = {
   upload: {
     stepLabel: "ステップ 1",
     title: "曲を読み込む",
+    sourceAria: "音声の読み込み元を選択",
+    loadedLabel: "解析準備完了",
+    tabs: {
+      youtube: "YouTube",
+      youtubeHint: "リンクを貼り付け",
+      local: "音声ファイル",
+      localHint: "端末から選択",
+    },
     loading: "読み込み中…",
     chooseAudio: "音声ファイルを選択",
     hint: "MP3・WAV・M4A・AAC のファイルに対応しています。",
+    or: "または",
+    local: {
+      kicker: "プライベート・端末内処理",
+      title: "音声ファイルをアップロード",
+      hint: "ローカルファイルは処理中もこのブラウザ内に保持されます。",
+      dropHint: "ここにドロップ、またはクリックして選択",
+      formatsAria: "対応する音声形式",
+    },
+    youtube: {
+      kicker: "直接読み込み",
+      title: "YouTubeから読み込む",
+      hint: "動画またはYouTube Musicのリンクを貼り付け、BPM解析用の音声を準備します。",
+      urlLabel: "YouTube URL",
+      placeholder: "https://www.youtube.com/watch?v=…",
+      action: "音声を読み込む",
+      importing: "読み込み中…",
+      failed: "このYouTubeリンクを読み込めませんでした。",
+      permissionNote:
+        "自分が所有しているか、利用許可を得た音楽だけを読み込んでください。15分未満の動画に対応しています。",
+      supportedLinks: "YouTube・YouTube Music・youtu.be",
+    },
     meta: {
       file: "ファイル名",
       duration: "再生時間",

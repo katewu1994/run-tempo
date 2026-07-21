@@ -53,6 +53,7 @@ const BPM_AUDITION_SONG_GAIN = 0.28;
 const BPM_AUDITION_CLICK_GAIN = 0.9;
 const DECODE_TIMEOUT_ERROR = "decode-timeout";
 const ANALYSIS_TIMEOUT_ERROR = "analysis-timeout";
+const ANALYSIS_TIMEOUT_MS = 120000;
 
 function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -357,7 +358,7 @@ function App() {
       try {
         const analysis = await withTimeout(
           analyzeSingleTrackBpm(decoded.audioBuffer, analysisController.signal),
-          60000,
+          ANALYSIS_TIMEOUT_MS,
           ANALYSIS_TIMEOUT_ERROR,
         );
 
@@ -722,7 +723,7 @@ function App() {
               />
               <p className="sidebar-note">
                 <ShieldCheck size={15} aria-hidden="true" />
-                Private, on-device audio. Nothing is uploaded.
+                Audio is processed on-device after it is loaded.
               </p>
             </aside>
 
