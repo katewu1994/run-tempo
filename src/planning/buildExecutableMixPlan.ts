@@ -31,9 +31,6 @@ export function buildExecutableMixPlan(args: {
       segmentPlan,
     ]),
   );
-  let timelineCursorSec = 0;
-  let previousBlock: ExecutableBlock | null = null;
-
   for (const segment of args.runningPlan.segments) {
     const segmentPlan = segmentPlansById.get(segment.segmentId);
 
@@ -42,7 +39,8 @@ export function buildExecutableMixPlan(args: {
       continue;
     }
 
-    let cursorSec = Math.max(segment.startSec, timelineCursorSec);
+    let cursorSec = segment.startSec;
+    let previousBlock: ExecutableBlock | null = null;
 
     if (cursorSec >= segment.endSec) {
       continue;
@@ -53,6 +51,12 @@ export function buildExecutableMixPlan(args: {
       segmentPlan.rankedTrackSelections,
       tracksById,
     );
+
+    if (resolvedSelections.length === 0) {
+      console.warn(`No usable selections found for segment ${segment.segmentId}.`);
+      continue;
+    }
+
     let selectionIndex = 0;
 
     while (cursorSec < segment.endSec) {
@@ -67,14 +71,60 @@ export function buildExecutableMixPlan(args: {
       const resolved = resolvedSelections[selectionIndex];
       selectionIndex += 1;
 
+      const requestedCrossfadeSec = previousBlock
+        ? getBarAlignedCrossfadeSec(
+            args.crossfadeSec,
+            segment.targetCadence,
+            REQUIRED_ACCENT_EVERY,
+          )
+        : 0;
+      let crossfadeWithPreviousSec = previousBlock
+        ? Math.min(
+            requestedCrossfadeSec,
+            getBlockDuration(previousBlock) / 2,
+            resolved.blockDurationSec / 2,
+          )
+        : 0;
+      let mixStartSec = Math.max(
+        segment.startSec,
+        cursorSec - crossfadeWithPreviousSec,
+      );
+      let mixEndSec = Math.min(
+        segment.endSec,
+        mixStartSec + resolved.blockDurationSec,
+      );
+      crossfadeWithPreviousSec = previousBlock
+        ? Math.min(
+            crossfadeWithPreviousSec,
+            getBlockDuration(previousBlock) / 2,
+            Math.max(0, mixEndSec - mixStartSec) / 2,
+          )
+        : 0;
+      mixStartSec = Math.max(
+        segment.startSec,
+        cursorSec - crossfadeWithPreviousSec,
+      );
+      mixEndSec = Math.min(
+        segment.endSec,
+        mixStartSec + resolved.blockDurationSec,
+      );
+
+      if (mixEndSec <= cursorSec) {
+        break;
+      }
+
+      const usedMixDurationSec = mixEndSec - mixStartSec;
       const block: ExecutableBlock = {
         blockId: `${segment.segmentId}-block-${blocks.length + 1}`,
         segmentId: segment.segmentId,
         trackId: resolved.track.trackId,
-        mixStartSec: cursorSec,
-        mixEndSec: cursorSec + resolved.blockDurationSec,
+        mixStartSec,
+        mixEndSec,
         sourceStartSec: 0,
-        sourceEndSec: resolved.track.durationSec,
+        sourceEndSec: Math.min(
+          resolved.track.durationSec,
+          usedMixDurationSec * resolved.playbackRate,
+        ),
         targetCadence: segment.targetCadence,
         cadenceRamp: segment.cadenceRamp,
         selectedSourceBpm: resolved.selectedSourceBpm,
@@ -82,7 +132,7 @@ export function buildExecutableMixPlan(args: {
         stretchRatio: resolved.stretchRatio,
         stretchDecision: resolved.stretchDecision,
         metronome: {
-          enabled: true,
+          enabled: resolved.track.sourceKind !== "standardized",
           ...getRequiredMetronomePreference(
             resolved.selection.metronomePreference,
           ),
@@ -94,15 +144,6 @@ export function buildExecutableMixPlan(args: {
           crossfadeWithPreviousSec: 0,
         },
       };
-      const crossfadeWithPreviousSec =
-        previousBlock === null
-          ? 0
-          : Math.min(
-              Math.max(0, args.crossfadeSec),
-              getBlockDuration(previousBlock) / 2,
-              getBlockDuration(block) / 2,
-            );
-
       block.transition.crossfadeWithPreviousSec = crossfadeWithPreviousSec;
       block.transition.fadeInSec = crossfadeWithPreviousSec;
 
@@ -113,7 +154,6 @@ export function buildExecutableMixPlan(args: {
       blocks.push(block);
       previousBlock = block;
       cursorSec = block.mixEndSec;
-      timelineCursorSec = Math.max(timelineCursorSec, cursorSec);
     }
 
     if (cursorSec < segment.endSec) {
@@ -127,10 +167,7 @@ export function buildExecutableMixPlan(args: {
 
   return {
     mixTitle: args.selectionPlan.mixTitle,
-    totalDurationSec: Math.max(
-      args.runningPlan.totalDurationSec,
-      getLastBlockEndSec(blocks),
-    ),
+    totalDurationSec: args.runningPlan.totalDurationSec,
     blocks,
   };
 }
@@ -163,9 +200,15 @@ function resolveSelectionsForSegment(
     const stretchRatio = segment.targetCadence / selectedSourceBpm;
     const stretchDecision = getStretchDecision(
       segment,
+      track,
       selectedSourceBpm,
       stretchRatio,
     );
+
+    if (stretchDecision === "skip_stretch") {
+      return [];
+    }
+
     const playbackRate = getRenderPlaybackRate(stretchDecision, stretchRatio);
     const blockDurationSec = getMaxRenderableMixDurationSec(
       track.durationSec,
@@ -183,6 +226,7 @@ function resolveSelectionsForSegment(
         selectedSourceBpm,
         stretchRatio,
         stretchDecision,
+        playbackRate,
         blockDurationSec,
       },
     ];
@@ -219,11 +263,16 @@ function getRequiredMetronomePreference(
 
 function getStretchDecision(
   segment: RunSegment,
+  track: TrackFeature,
   selectedSourceBpm: number,
   stretchRatio: number,
 ): StretchDecision {
   const bpmDifference = Math.abs(segment.targetCadence - selectedSourceBpm);
   const requiredStretchPercent = Math.abs(stretchRatio - 1) * 100;
+
+  if (track.sourceKind === "standardized") {
+    return bpmDifference <= 0.05 ? "no_stretch" : "skip_stretch";
+  }
 
   if (bpmDifference <= 3) {
     return "no_stretch";
@@ -234,6 +283,21 @@ function getStretchDecision(
   }
 
   return "skip_stretch";
+}
+
+function getBarAlignedCrossfadeSec(
+  requestedSec: number,
+  cadenceBpm: number,
+  accentEvery: MetronomePreference["accentEvery"],
+): number {
+  if (!Number.isFinite(requestedSec) || requestedSec <= 0) {
+    return 0;
+  }
+
+  const beatsPerBar = accentEvery > 0 ? accentEvery : 4;
+  const barDurationSec = (60 / Math.max(1, cadenceBpm)) * beatsPerBar;
+  const barCount = Math.max(1, Math.round(requestedSec / barDurationSec));
+  return barDurationSec * barCount;
 }
 
 function getBlockDuration(block: ExecutableBlock): number {
@@ -268,11 +332,4 @@ function getMaxRenderableMixDurationSec(
   }
 
   return sourceDurationSec / playbackRate;
-}
-
-function getLastBlockEndSec(blocks: ExecutableBlock[]): number {
-  return blocks.reduce(
-    (lastEndSec, block) => Math.max(lastEndSec, block.mixEndSec),
-    0,
-  );
 }

@@ -1,4 +1,5 @@
 export type TrackAudioMap = Record<string, AudioBuffer>;
+export type TrackFileMap = Record<string, File>;
 
 export type MultiBlockRenderOptions = {
   outputSampleRate?: number;

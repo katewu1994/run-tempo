@@ -107,7 +107,9 @@ export function MixTrackListView({
                         )}
                       </span>
                       <span className="metric-tag">
-                        {copy.clickVolume(block.metronome.clickVolume)}
+                        {block.metronome.enabled
+                          ? copy.clickVolume(block.metronome.clickVolume)
+                          : copy.embeddedClick}
                       </span>
                     </div>
                     <p>

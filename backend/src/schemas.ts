@@ -23,6 +23,8 @@ export const RawEnergyFeaturesSchema = z.object({
 
 export const TrackFeatureSchema = z.object({
   trackId: z.string().min(1),
+  sourceKind: z.enum(["raw", "standardized"]).optional(),
+  embeddedCadenceBpm: finiteNumber.positive().nullable().optional(),
   fileName: z.string().min(1),
   durationSec: finiteNumber.positive(),
   detectedBpm: finiteNumber.positive().nullable(),
@@ -30,6 +32,7 @@ export const TrackFeatureSchema = z.object({
   beatConfidence: finiteNumber.min(0).max(1).nullable(),
   tempoStability: finiteNumber.min(0).max(1).nullable(),
   rawEnergyFeatures: RawEnergyFeaturesSchema.nullable(),
+  energyFeatureSource: z.enum(["embedded", "analyzed"]).optional(),
   normalizedEnergyScore: finiteNumber.min(0).max(100).nullable(),
 });
 
@@ -109,6 +112,8 @@ export const PlannerInputSchema = z.object({
     allowLoop: z.boolean(),
     maxTracksPerSegment: z.number().int().min(1).max(10),
     preferStableCadenceGrid: z.boolean(),
+    minRepeatGapTracks: z.number().int().min(0).max(12),
+    preferFolderVariety: z.boolean(),
   }),
 });
 

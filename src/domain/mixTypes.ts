@@ -11,15 +11,22 @@ export type RawEnergyFeatures = {
   spectralCentroid: number;
 };
 
+export type TrackSourceKind = "raw" | "standardized";
+
 export type TrackFeature = {
   trackId: string;
+  importKey: string;
   fileName: string;
+  relativePath: string | null;
+  sourceKind: TrackSourceKind;
+  embeddedCadenceBpm: number | null;
   durationSec: number;
   detectedBpm: number | null;
   bpmCandidates: BpmCandidate[];
   beatConfidence: number | null;
   tempoStability: number | null;
   rawEnergyFeatures: RawEnergyFeatures | null;
+  energyFeatureSource?: "embedded" | "analyzed";
   normalizedEnergyScore: number | null;
 };
 
@@ -95,6 +102,43 @@ export type OpenAISelectionPlan = {
       reason: string;
     }>;
   }>;
+};
+
+export type MixPlanStrategy = "balanced" | "energy" | "variety";
+
+export type GlobalSequenceRules = {
+  minRepeatGapTracks: number;
+  maxTracksPerSegment: number;
+  preferFolderVariety: boolean;
+};
+
+export type MixPlanVariant = {
+  variantId: MixPlanStrategy;
+  selectionPlan: OpenAISelectionPlan;
+  summary: {
+    uniqueTrackCount: number;
+    selectionCount: number;
+    repeatCount: number;
+    averageCandidateScore: number;
+  };
+};
+
+export type LibraryCoverageItem = {
+  targetCadence: number;
+  segmentIds: string[];
+  candidateTrackIds: string[];
+  finishedTrackCount: number;
+  rawTrackCount: number;
+  status: "missing" | "thin" | "covered";
+};
+
+export type LibraryCoverageReport = {
+  items: LibraryCoverageItem[];
+  coveredCadenceCount: number;
+  totalCadenceCount: number;
+  coveragePercent: number;
+  missingCadences: number[];
+  thinCadences: number[];
 };
 
 export type StretchDecision = "no_stretch" | "safe_stretch" | "skip_stretch";

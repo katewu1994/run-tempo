@@ -25,15 +25,30 @@ export function scoreTrackForSegment(
     return null;
   }
 
+  // Finished tracks already contain a cadence click. Playing them at a
+  // different cadence would make the embedded click disagree with the plan,
+  // so they are intentionally an exact-match library.
+  if (
+    track.sourceKind === "standardized" &&
+    Math.abs(bestCandidate.bpm - segment.targetCadence) > 0.05
+  ) {
+    return null;
+  }
+
   const cadenceDiff = Math.abs(bestCandidate.bpm - segment.targetCadence);
   const cadenceFitScore = clampScore(100 - cadenceDiff * 8);
   const energyFitScore = getEnergyFitScore(
     track.normalizedEnergyScore ?? 50,
     segment.targetEnergyRange,
   );
-  const stabilityScore = 0;
+  const stabilityScore = clampScore(
+    track.sourceKind === "standardized"
+      ? 100
+      : (track.tempoStability ?? track.beatConfidence ?? 0.5) * 100,
+  );
   const stretchRatio = segment.targetCadence / bestCandidate.bpm;
   const requiredStretchPercent = Math.abs(stretchRatio - 1) * 100;
+
   const stretchRiskScore =
     requiredStretchPercent <= 3
       ? 100
@@ -41,7 +56,10 @@ export function scoreTrackForSegment(
         ? 75
         : 20;
   const totalScore =
-    (cadenceFitScore * 45 + energyFitScore * 25 + stretchRiskScore * 10) / 80;
+    cadenceFitScore * 0.45 +
+    energyFitScore * 0.25 +
+    stabilityScore * 0.2 +
+    stretchRiskScore * 0.1;
 
   return {
     segmentId: segment.segmentId,

@@ -1,6 +1,18 @@
+import type { RawEnergyFeatures } from "../domain/mixTypes";
+
 export type WavArtwork = {
   data: Uint8Array;
   mimeType: string;
+};
+
+export type RunTempoWavMetadata = {
+  version: 1;
+  cadenceBpm: number;
+  clickEmbedded: true;
+  clickStyle: string;
+  accentEvery: number;
+  clickVolume: number;
+  rawEnergyFeatures?: RawEnergyFeatures;
 };
 
 export type WavMetadata = {
@@ -8,6 +20,7 @@ export type WavMetadata = {
   artist?: string;
   album?: string;
   artwork?: WavArtwork;
+  runTempo?: RunTempoWavMetadata;
 };
 
 export function audioBufferToWavBlob(
@@ -50,12 +63,16 @@ export function audioBufferToWavBlob(
   ];
   const infoChunk = createInfoChunk(metadata);
   const id3Chunk = createId3Chunk(metadata);
+  const runTempoChunk = createRunTempoChunk(metadata?.runTempo);
 
   if (infoChunk) {
     chunks.push(infoChunk);
   }
   if (id3Chunk) {
     chunks.push(id3Chunk);
+  }
+  if (runTempoChunk) {
+    chunks.push(runTempoChunk);
   }
 
   const riffBody = concatBytes([asciiBytes("WAVE"), ...chunks]);
@@ -66,6 +83,19 @@ export function audioBufferToWavBlob(
 
   const fileBytes = concatBytes([header, riffBody]);
   return new Blob([fileBytes.buffer as ArrayBuffer], { type: "audio/wav" });
+}
+
+function createRunTempoChunk(
+  metadata: RunTempoWavMetadata | undefined,
+): Uint8Array | null {
+  if (!metadata) {
+    return null;
+  }
+
+  return createRiffChunk(
+    "rtmp",
+    new TextEncoder().encode(JSON.stringify(metadata)),
+  );
 }
 
 export function createWavFileName(songTitle: string, targetBpm: number): string {

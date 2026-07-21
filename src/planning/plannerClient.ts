@@ -18,6 +18,8 @@ export type PlannerInput = {
     allowLoop: boolean;
     maxTracksPerSegment: number;
     preferStableCadenceGrid: boolean;
+    minRepeatGapTracks: number;
+    preferFolderVariety: boolean;
   };
 };
 

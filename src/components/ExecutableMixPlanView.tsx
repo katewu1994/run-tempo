@@ -84,7 +84,11 @@ export function ExecutableMixPlanView({
                   {formatCadenceTarget(block.targetCadence, block.cadenceRamp)} /{" "}
                   {block.selectedSourceBpm.toFixed(1)}
                 </td>
-                <td>{copy.clickVolume(block.metronome.clickVolume)}</td>
+                <td>
+                  {block.metronome.enabled
+                    ? copy.clickVolume(block.metronome.clickVolume)
+                    : copy.embeddedClick}
+                </td>
                 <td>
                   {block.stretchRatio.toFixed(3)}x{" "}
                   <span className={`decision-pill ${block.stretchDecision}`}>

@@ -33,12 +33,15 @@ Hard rules:
 - Do not claim to listen to the audio.
 - Prefer candidates with high totalScore.
 - Prefer BPM candidates close to targetCadence.
+- Tracks marked sourceKind "standardized" already contain their cadence click; treat their 1:1 embeddedCadenceBpm as authoritative.
 - Treat each segment's maxStretchPercent as a hard limit whenever at least one candidate is within that limit.
 - Prefer lower energy for warmup/cooldown.
 - Prefer higher energy for finish/tempo.
 - Respect allowTrackReuse.
 - Respect allowLoop. If it is true, return a strong unique ranking; the app can repeat the ranked tracks if the target duration is longer than the available audio.
 - Respect maxTracksPerSegment.
+- Avoid selecting a track again inside minRepeatGapTracks whenever the candidate pool allows it.
+- When preferFolderVariety is true, prefer alternating source folders when quality is comparable.
 - Use metronomePreference.clickStyle "sharp_beep" and accentEvery 4 for every selection.
 - Return JSON only matching the schema.
 `.trim();
@@ -147,9 +150,11 @@ async function callOpenAI(
       },
       body: JSON.stringify({
         model,
+        reasoning: { effort: "low" },
         instructions: SYSTEM_INSTRUCTION,
         input: prompt,
         text: {
+          verbosity: "low",
           format: {
             type: "json_schema",
             name: "run_tempo_mix_plan",
@@ -218,6 +223,8 @@ function minimizeCandidate(candidate: CandidateScore, track: TrackFeature | unde
     trackId: candidate.trackId,
     fileName: track?.fileName ?? candidate.trackId,
     durationSec: track?.durationSec ?? null,
+    sourceKind: track?.sourceKind ?? "raw",
+    embeddedCadenceBpm: track?.embeddedCadenceBpm ?? null,
     bestCandidateBpm: candidate.bestCandidateBpm,
     interpretation: candidate.interpretation,
     normalizedEnergyScore: track?.normalizedEnergyScore ?? null,

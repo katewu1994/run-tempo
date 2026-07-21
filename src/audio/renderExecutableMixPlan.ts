@@ -6,7 +6,7 @@ import type { MultiBlockRenderOptions, TrackAudioMap } from "./multiTrackTypes";
 const DEFAULT_RENDER_OPTIONS: MultiBlockRenderOptions = {
   masterGain: 0.9,
   sourceGain: 0.85,
-  metronomeGain: 0.35,
+  metronomeGain: 1,
   preventClipping: true,
   normalizeSourceLoudness: true,
   targetSourceRms: 0.16,
@@ -78,6 +78,8 @@ export async function renderExecutableMixPlan(args: {
         clickVolume: block.metronome.clickVolume,
         accentEvery: block.metronome.accentEvery,
         gain: options.metronomeGain,
+        fadeInSec: block.transition.fadeInSec,
+        fadeOutSec: block.transition.fadeOutSec,
       });
     }
   }

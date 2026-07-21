@@ -268,7 +268,7 @@ function getStretchSafeCandidatePool(
     return stretchSafeCandidates;
   }
 
-  return candidates;
+  return [];
 }
 
 function normalizeMetronomePreference(raw: unknown): TrackSelection["metronomePreference"] {

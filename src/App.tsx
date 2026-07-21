@@ -17,6 +17,7 @@ import {
   type ClickTempoRelation,
 } from "./audio/bpmCandidates";
 import { decodeAudioFile } from "./audio/decodeAudio";
+import { extractRawEnergyFeatures } from "./audio/extractEnergyFeatures";
 import {
   audioBufferToWavBlob,
   createWavFileName,
@@ -617,7 +618,18 @@ function App() {
       metronome,
       masterGain,
     );
-    const blob = audioBufferToWavBlob(mixed, metadata);
+    const blob = audioBufferToWavBlob(mixed, {
+      ...metadata,
+      runTempo: {
+        version: 1,
+        cadenceBpm: metronomeSettings.targetBpm,
+        clickEmbedded: true,
+        clickStyle: metronomeSettings.clickStyle,
+        accentEvery: metronomeSettings.accentEvery,
+        clickVolume: metronomeSettings.volume,
+        rawEnergyFeatures: extractRawEnergyFeatures(loadedAudio.audioBuffer),
+      },
+    });
     downloadBlob(
       blob,
       createWavFileName(
@@ -668,12 +680,14 @@ function App() {
           </button>
           <button
             type="button"
-            className="mode-disabled"
-            disabled
-            aria-label={`${copy.modes.multi}: ${copy.modes.comingSoon}`}
+            className={appMode === "multi" ? "active" : ""}
+            aria-pressed={appMode === "multi"}
+            onClick={() => {
+              stopPlayback();
+              setAppMode("multi");
+            }}
           >
-            <span>{copy.modes.multi}</span>
-            <small>{copy.modes.comingSoon}</small>
+            {copy.modes.multi}
           </button>
         </div>
         <div className="header-utilities">

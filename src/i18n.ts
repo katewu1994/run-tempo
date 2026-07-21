@@ -308,20 +308,20 @@ const en = {
     },
     stepHints: {
       1: {
-        title: "Load your tracks",
-        hint: "Choose the songs you want to use. Each file is analyzed locally before you move on.",
+        title: "Build your track library",
+        hint: "Import a folder of click-ready tracks made in Single Track. Subfolders are included automatically.",
       },
       2: {
         title: "Build the run plan",
         hint: "Set the duration and cadence shape. Press Next to score the best track matches.",
       },
       3: {
-        title: "Review the candidates",
-        hint: "Check the top matches for each segment. Press Next to generate the mix plan.",
+        title: "Check coverage and planning rules",
+        hint: "Resolve cadence gaps, set repeat protection, then generate three complete sequence options.",
       },
       4: {
-        title: "Review the mix plan",
-        hint: "Review the selected track order and required click settings before moving to preview and export.",
+        title: "Choose and edit the sequence",
+        hint: "Compare three plans, lock tracks, replace compatible choices, or drag within a cadence segment.",
       },
       5: {
         title: "Preview and export",
@@ -330,30 +330,69 @@ const en = {
     },
     upload: {
       eyebrow: "Multi-track",
-      title: "Plan a running mix",
-      analyzingAudio: "Analyzing audio...",
+      title: "Import your running track library",
+      analyzingAudio: "Importing audio...",
+      sourceAria: "Choose a multi-track import source",
+      standardizedTab: "Finished tracks",
+      standardizedTabHint: "Folder and subfolders",
+      standardizedKicker: "Recommended",
+      standardizedTitle: "Single Track output folder",
+      standardizedHint: "Recursively import click-ready tracks without detecting BPM or adding another metronome.",
+      standardizedFileRule: "Uses the _180bpm.wav cadence written by Single Track",
+      chooseFolder: "Choose finished-track folder",
+      rawKicker: "Compatibility",
+      rawTab: "Audio files",
+      rawTabHint: "Analyze from your device",
+      rawTitle: "Raw audio files",
+      rawHint: "Import unprocessed music when needed. These files still use BPM analysis and a generated click.",
+      rawFileHint: "Select one or more unprocessed tracks",
+      formatsAria: "Supported raw audio formats",
       chooseFiles: "Choose multiple audio files",
-      hint: "Tracks stay in the browser. The planner only ranks tracks; timing, stretch ratio, and blocks are calculated by the app.",
+      clearLibrary: "Clear library",
+      librarySummary: {
+        total: "Library tracks",
+        finished: "Finished",
+        raw: "Raw",
+        cadenceRange: "Cadence range",
+        memory: "Audio loading",
+        onDemand: "Selected only",
+      },
+      hint: "New selections are appended and duplicates are skipped. Tracks stay in this browser; changing the library resets the current mix plan.",
       preparingFiles: (count: number) => `Preparing ${count} file(s)...`,
-      analyzingFile: (current: number, total: number, fileName: string) =>
-        `Analyzing ${current}/${total}: ${fileName}`,
-      analyzedTracks: (count: number) => `Analyzed ${count} track(s).`,
+      processingFile: (current: number, total: number, fileName: string) =>
+        `Importing ${current}/${total}: ${fileName}`,
+      importedTracks: (
+        added: number,
+        total: number,
+        duplicates: number,
+        invalidNames: number,
+      ) =>
+        `Added ${added}; ${total} track(s) in library${duplicates ? `; ${duplicates} duplicate(s) skipped` : ""}${invalidNames ? `; ${invalidNames} invalid standardized name(s) skipped` : ""}.`,
       decodeFailures: (count: number) =>
         `${count} file(s) could not be decoded or analyzed.`,
       noDecodedFiles: "No audio files could be decoded.",
+      noAudioFiles: "The selection does not contain supported MP3, WAV, M4A, or AAC audio.",
+      invalidStandardizedNames: (count: number) =>
+        `${count} track(s) were skipped because their names do not end in _<cadence>bpm.wav (for example, Song_180bpm.wav).`,
     },
     tracks: {
-      eyebrow: "Batch",
-      title: "Analyzed tracks",
+      eyebrow: "Library",
+      title: "Imported track library",
       headers: {
         file: "File",
+        source: "Source",
         duration: "Duration",
-        detectedBpm: "Detected BPM",
+        detectedBpm: "Cadence BPM",
         candidates: "Candidates",
         energy: "Energy",
         stability: "Stability",
       },
       noCandidates: "No candidates",
+      remove: "Remove track",
+      sourceLabels: {
+        raw: "Raw · analyze",
+        standardized: "Click-ready",
+      },
       interpretations: {
         "1:2": "1:2",
         "2:3": "2:3",
@@ -431,15 +470,35 @@ const en = {
       eyebrow: "Planner",
       title: "Score and generate",
       plannerModeLabel: "Planner mode",
+      autoPlanner: "Auto · Recommended",
+      localPlanner: "Local",
       mockPlanner: "Mock Planner",
       openaiPlanner: "GPT-5.6 Terra Planner",
       mockPlannerHint:
         "Uses the local deterministic mock planner. No metadata is sent to the backend.",
       openaiPlannerHint:
         "Uses the backend GPT-5.6 Terra planner. Only extracted metadata and candidate scores are sent.",
+      autoPlannerHint:
+        "Uses GPT-5.6 Terra first and automatically falls back to the local planner if the API is unavailable.",
+      localPlannerHint:
+        "Deterministic, instant and offline. No API cost.",
+      plannerResult: {
+        gpt: "Generated by GPT-5.6 Terra",
+        local: "Generated locally",
+        localFallback: "GPT unavailable · generated locally",
+      },
+      sequenceRules: {
+        title: "Global sequence rules",
+        hint: "Applied across segment boundaries. Reuse remains available when the library is too small.",
+        repeatGap: "Minimum repeat gap",
+        segmentTracks: "Tracks ranked per segment",
+        tracks: (count: number) => `${count} track${count === 1 ? "" : "s"}`,
+        folderVariety: "Prefer folder variety",
+        folderVarietyHint: "Alternate albums or source folders when scores are close.",
+      },
       scoreCandidates: "Score Candidates",
       generating: "Generating...",
-      generateMixPlan: "Generate GPT-5.6 Terra Mix Plan",
+      generateMixPlan: "Generate mix plan",
       planningError: "Unable to generate a mix plan.",
       endpointLabel: "Endpoint",
       sameOriginPlannerEndpoint: "same-origin /api/openai/mix-plan",
@@ -475,6 +534,9 @@ const en = {
         stretch: "Stretch",
       },
       emptySegment: "No BPM candidates are available for this segment.",
+      coverageReady: "Every cadence step has at least one compatible track.",
+      coverageMissing: (count: number) =>
+        `${count} cadence step(s) have no compatible track. Add exact-cadence Finished tracks or compatible raw audio.`,
       interpretations: {
         "1:2": "1:2",
         "2:3": "2:3",
@@ -482,6 +544,53 @@ const en = {
         "3:2": "3:2",
         "2:1": "2:1",
       },
+    },
+    coverage: {
+      eyebrow: "Coverage check",
+      title: "Cadence library coverage",
+      percent: (value: number) => `${value}% covered`,
+      completeHint: "Every cadence used by this run has a compatible track.",
+      missingHint: (count: number) =>
+        `${count} cadence target${count === 1 ? " is" : "s are"} missing from the library.`,
+      status: {
+        missing: "Missing",
+        thin: "Thin",
+        covered: "Covered",
+      },
+      trackBreakdown: (finished: number, raw: number) =>
+        `${finished} finished · ${raw} raw`,
+      makeInSingle: (cadences: string) =>
+        `Create Finished tracks at ${cadences} BPM in Single Track, then import the folder again.`,
+      thinRecommendation: (cadences: string) =>
+        `${cadences} BPM has only one compatible track. Add another to improve variety and repeat protection.`,
+    },
+    variants: {
+      eyebrow: "Three options",
+      title: "Choose a planning direction",
+      hint: "Switching plans preserves every locked track.",
+      names: {
+        balanced: "Balanced",
+        energy: "Energy flow",
+        variety: "Maximum variety",
+      },
+      descriptions: {
+        balanced: "Best overall cadence, energy and planner ranking.",
+        energy: "Stronger energy arc for tempo and finish sections.",
+        variety: "Uses more unique tracks and reduces repetition.",
+      },
+      unique: (count: number) => `${count} unique`,
+      repeats: (count: number) => `${count} repeats`,
+      score: (value: number) => `score ${Math.round(value)}`,
+    },
+    editor: {
+      eyebrow: "Sequence editor",
+      title: "Lock, replace and reorder",
+      hint: "Drag only within the same cadence segment. Locked tracks survive plan switching.",
+      replace: "Replace track",
+      moveUp: "Move track up",
+      moveDown: "Move track down",
+      lock: "Lock track",
+      unlock: "Unlock track",
     },
     selection: {
       eyebrow: "Mix track list",
@@ -499,6 +608,7 @@ const en = {
       blockDetail: (duration: string, stretchRatio: string) =>
         `${duration} used in the final mix; stretch ${stretchRatio}x`,
       clickVolume: (volume: number) => `click ${Math.round(volume * 100)}%`,
+      embeddedClick: "embedded click",
       noSelection: "No tracks were added to the mix.",
       reason: (
         totalScore: string,
@@ -515,10 +625,13 @@ const en = {
       summary: {
         status: "Status",
         required: "Always added",
+        embeddedOnly: "Embedded in source",
+        fromSource: "From source",
         style: "Style",
         accent: "Accent",
         sync: "Beat sync",
         automaticSync: "Automatic",
+        alreadyAligned: "Prepared in Single Track",
         volume: "Volume",
       },
       clickStyleLabel: "Click style",
@@ -529,6 +642,9 @@ const en = {
         low_tick: "Low tick",
       },
       volumeLabel: "Click volume",
+      generatedBlocks: (count: number) => `Generated for ${count} raw block(s)`,
+      embeddedBlocks: (count: number) =>
+        `${count} block(s) use their embedded click; no second metronome is added.`,
       accentLabel: "Accent",
       noAccent: "None",
       everyAccent: (accent: number) => `Every ${accent} beats`,
@@ -551,6 +667,7 @@ const en = {
         transition: "Transition",
       },
       clickVolume: (volume: number) => `click ${Math.round(volume * 100)}%`,
+      embeddedClick: "embedded",
       stretchDecisions: {
         no_stretch: "no stretch",
         safe_stretch: "safe stretch",
@@ -894,20 +1011,20 @@ const ja: AppCopy = {
     },
     stepHints: {
       1: {
-        title: "曲を読み込む",
-        hint: "ミックスに使いたい曲を複数選びます。各ファイルはローカルで解析されます。",
+        title: "トラックライブラリを作成",
+        hint: "Single Trackで作成したクリック入りトラックのフォルダを読み込みます。サブフォルダも自動で対象になります。",
       },
       2: {
         title: "ランプランを作成",
         hint: "時間とケイデンスの流れを決めます。「次へ」で各区間に合う曲をスコアリングします。",
       },
       3: {
-        title: "候補を確認",
-        hint: "各区間の上位候補を確認します。「次へ」でミックスプランを生成します。",
+        title: "カバレッジとルールを確認",
+        hint: "不足BPMを確認し、重複防止ルールを設定してから3種類の曲順を生成します。",
       },
       4: {
-        title: "ミックスプランを確認",
-        hint: "選ばれた曲順と必須クリック設定を確認してから、試聴と書き出しに進みます。",
+        title: "曲順を選択して編集",
+        hint: "3案を比較し、曲の固定、互換候補への交換、同じケイデンス区間内での並べ替えができます。",
       },
       5: {
         title: "試聴して書き出す",
@@ -916,30 +1033,69 @@ const ja: AppCopy = {
     },
     upload: {
       eyebrow: "複数曲",
-      title: "ランニングミックスを作成",
-      analyzingAudio: "音声を解析中…",
+      title: "ランニング用トラックライブラリを読み込む",
+      analyzingAudio: "音声を読み込み中…",
+      sourceAria: "複数曲の読み込み元を選択",
+      standardizedTab: "完成トラック",
+      standardizedTabHint: "フォルダとサブフォルダ",
+      standardizedKicker: "おすすめ",
+      standardizedTitle: "Single Trackの出力フォルダ",
+      standardizedHint: "クリック入り完成トラックを再帰的に読み込み、BPM再検出やメトロノームの二重追加を行いません。",
+      standardizedFileRule: "Single Trackが付ける _180bpm.wav のケイデンスを使用",
+      chooseFolder: "完成トラックのフォルダを選択",
+      rawKicker: "互換モード",
+      rawTab: "音声ファイル",
+      rawTabHint: "端末内で解析",
+      rawTitle: "未処理の音声ファイル",
+      rawHint: "必要な場合だけ未処理の曲を追加します。BPM解析とクリック生成は従来どおり行います。",
+      rawFileHint: "未処理のトラックを複数選択できます",
+      formatsAria: "対応する未処理音声形式",
       chooseFiles: "複数の音声ファイルを選択",
-      hint: "曲はブラウザ内だけで処理されます。プランナーは曲の順位付けだけを行い、タイミング、ストレッチ率、ブロックはアプリ側で計算します。",
+      clearLibrary: "ライブラリを消去",
+      librarySummary: {
+        total: "ライブラリ曲数",
+        finished: "完成済み",
+        raw: "未処理",
+        cadenceRange: "ケイデンス範囲",
+        memory: "音声読み込み",
+        onDemand: "選択曲のみ",
+      },
+      hint: "新しい選択は追加され、重複はスキップされます。曲はこのブラウザ内だけで処理され、ライブラリ変更時は現在のミックスプランがリセットされます。",
       preparingFiles: (count: number) => `${count}個のファイルを準備中…`,
-      analyzingFile: (current: number, total: number, fileName: string) =>
-        `解析中 ${current}/${total}: ${fileName}`,
-      analyzedTracks: (count: number) => `${count}曲を解析しました。`,
+      processingFile: (current: number, total: number, fileName: string) =>
+        `読み込み中 ${current}/${total}: ${fileName}`,
+      importedTracks: (
+        added: number,
+        total: number,
+        duplicates: number,
+        invalidNames: number,
+      ) =>
+        `${added}曲追加、ライブラリ合計${total}曲${duplicates ? `、重複${duplicates}曲をスキップ` : ""}${invalidNames ? `、命名規則外${invalidNames}曲をスキップ` : ""}。`,
       decodeFailures: (count: number) =>
         `${count}個のファイルを読み込みまたは解析できませんでした。`,
       noDecodedFiles: "読み込める音声ファイルがありませんでした。",
+      noAudioFiles: "選択範囲に対応するMP3、WAV、M4A、AAC音声がありません。",
+      invalidStandardizedNames: (count: number) =>
+        `${count}曲をスキップしました。ファイル名を Song_180bpm.wav のように _<ケイデンス>bpm.wav で終わらせてください。`,
     },
     tracks: {
-      eyebrow: "一括解析",
-      title: "解析済みの曲",
+      eyebrow: "ライブラリ",
+      title: "読み込み済みトラックライブラリ",
       headers: {
         file: "ファイル",
+        source: "ソース",
         duration: "長さ",
-        detectedBpm: "検出BPM",
+        detectedBpm: "ケイデンスBPM",
         candidates: "候補",
         energy: "エネルギー",
         stability: "安定度",
       },
       noCandidates: "候補なし",
+      remove: "トラックを削除",
+      sourceLabels: {
+        raw: "未処理・解析",
+        standardized: "クリック入り",
+      },
       interpretations: {
         "1:2": "1:2",
         "2:3": "2:3",
@@ -1017,15 +1173,35 @@ const ja: AppCopy = {
       eyebrow: "プランナー",
       title: "スコア計算と生成",
       plannerModeLabel: "プランナーモード",
+      autoPlanner: "自動・おすすめ",
+      localPlanner: "ローカル",
       mockPlanner: "モックプランナー",
       openaiPlanner: "GPT-5.6 Terraプランナー",
       mockPlannerHint:
         "ローカルの決定的なモックプランナーを使います。メタデータはバックエンドに送信されません。",
       openaiPlannerHint:
         "バックエンドのGPT-5.6 Terraプランナーを使います。抽出済みメタデータと候補スコアだけを送信します。",
+      autoPlannerHint:
+        "まずGPT-5.6 Terraを使い、APIが利用できない場合は自動的にローカルへ切り替えます。",
+      localPlannerHint:
+        "決定的・高速・オフライン。APIコストはかかりません。",
+      plannerResult: {
+        gpt: "GPT-5.6 Terraで生成",
+        local: "ローカルで生成",
+        localFallback: "GPT利用不可・ローカルで生成",
+      },
+      sequenceRules: {
+        title: "全体の曲順ルール",
+        hint: "区間をまたいで適用します。曲数不足時は必要な再利用を許可します。",
+        repeatGap: "同じ曲までの最小間隔",
+        segmentTracks: "区間ごとの候補曲数",
+        tracks: (count: number) => `${count}曲`,
+        folderVariety: "フォルダの多様性を優先",
+        folderVarietyHint: "スコアが近い場合はアルバムや元フォルダを交互にします。",
+      },
       scoreCandidates: "候補をスコアリング",
       generating: "生成中…",
-      generateMixPlan: "GPT-5.6 Terraでミックスプランを生成",
+      generateMixPlan: "ミックスプランを生成",
       planningError: "ミックスプランを生成できませんでした。",
       endpointLabel: "エンドポイント",
       sameOriginPlannerEndpoint: "同一オリジン /api/openai/mix-plan",
@@ -1061,6 +1237,9 @@ const ja: AppCopy = {
         stretch: "ストレッチ",
       },
       emptySegment: "このセグメントで使えるBPM候補がありません。",
+      coverageReady: "すべてのケイデンス区間に互換トラックがあります。",
+      coverageMissing: (count: number) =>
+        `${count}個のケイデンス区間に互換トラックがありません。正確なBPMの完成済みトラック、または互換性のある未処理音源を追加してください。`,
       interpretations: {
         "1:2": "1:2",
         "2:3": "2:3",
@@ -1068,6 +1247,52 @@ const ja: AppCopy = {
         "3:2": "3:2",
         "2:1": "2:1",
       },
+    },
+    coverage: {
+      eyebrow: "カバレッジ確認",
+      title: "ケイデンス曲庫カバレッジ",
+      percent: (value: number) => `${value}%対応`,
+      completeHint: "このランで使うすべてのケイデンスに互換トラックがあります。",
+      missingHint: (count: number) => `${count}個のケイデンスが曲庫に不足しています。`,
+      status: {
+        missing: "不足",
+        thin: "少ない",
+        covered: "対応済み",
+      },
+      trackBreakdown: (finished: number, raw: number) =>
+        `完成${finished} · 未処理${raw}`,
+      makeInSingle: (cadences: string) =>
+        `Single Trackで ${cadences} BPM の完成トラックを作成し、フォルダを再読み込みしてください。`,
+      thinRecommendation: (cadences: string) =>
+        `${cadences} BPMは互換トラックが1曲だけです。多様性と重複防止のため、もう1曲追加してください。`,
+    },
+    variants: {
+      eyebrow: "3つの候補",
+      title: "プランの方向性を選択",
+      hint: "プランを切り替えても固定した曲は保持されます。",
+      names: {
+        balanced: "バランス",
+        energy: "エネルギーフロー",
+        variety: "多様性重視",
+      },
+      descriptions: {
+        balanced: "ケイデンス、エネルギー、プランナー順位の総合案。",
+        energy: "テンポとフィニッシュに向けた強いエネルギー曲線。",
+        variety: "ユニーク曲数を増やし、重複を減らします。",
+      },
+      unique: (count: number) => `ユニーク${count}曲`,
+      repeats: (count: number) => `重複${count}回`,
+      score: (value: number) => `スコア${Math.round(value)}`,
+    },
+    editor: {
+      eyebrow: "曲順エディター",
+      title: "固定・交換・並べ替え",
+      hint: "ドラッグは同じケイデンス区間内だけです。固定曲はプラン切替後も保持されます。",
+      replace: "曲を交換",
+      moveUp: "曲を上へ移動",
+      moveDown: "曲を下へ移動",
+      lock: "曲を固定",
+      unlock: "固定を解除",
     },
     selection: {
       eyebrow: "ミックスに入る曲",
@@ -1085,6 +1310,7 @@ const ja: AppCopy = {
       blockDetail: (duration: string, stretchRatio: string) =>
         `最終ミックスで${duration}使用、ストレッチ ${stretchRatio}x`,
       clickVolume: (volume: number) => `クリック ${Math.round(volume * 100)}%`,
+      embeddedClick: "埋め込みクリック",
       noSelection: "ミックスに入る曲はありません。",
       reason: (
         totalScore: string,
@@ -1101,10 +1327,13 @@ const ja: AppCopy = {
       summary: {
         status: "状態",
         required: "常に追加",
+        embeddedOnly: "音源に埋め込み済み",
+        fromSource: "音源の設定",
         style: "音色",
         accent: "アクセント",
         sync: "ビート同期",
         automaticSync: "自動",
+        alreadyAligned: "Single Trackで調整済み",
         volume: "音量",
       },
       clickStyleLabel: "クリック音の種類",
@@ -1115,6 +1344,9 @@ const ja: AppCopy = {
         low_tick: "低いクリック",
       },
       volumeLabel: "クリックの音量",
+      generatedBlocks: (count: number) => `未処理の${count}ブロックに生成`,
+      embeddedBlocks: (count: number) =>
+        `${count}ブロックは埋め込みクリックを使用し、二重にメトロノームを追加しません。`,
       accentLabel: "アクセント",
       noAccent: "なし",
       everyAccent: (accent: number) => `${accent}拍ごと`,
@@ -1137,6 +1369,7 @@ const ja: AppCopy = {
         transition: "遷移",
       },
       clickVolume: (volume: number) => `クリック ${Math.round(volume * 100)}%`,
+      embeddedClick: "埋め込み済み",
       stretchDecisions: {
         no_stretch: "ストレッチなし",
         safe_stretch: "安全範囲",

@@ -36,6 +36,8 @@ export type RunningPlanSettings = {
 
 const SECONDS_PER_MINUTE = 60;
 const DEFAULT_MAX_STRETCH_PERCENT = 10;
+const PROGRESSIVE_CADENCE_STEP_BPM = 5;
+export const MAX_MULTI_TRACK_DURATION_SEC = 60 * 60;
 
 export const MIN_RUNNING_BPM = 80;
 export const MAX_RUNNING_BPM = 220;
@@ -70,15 +72,38 @@ export const DEFAULT_RUNNING_PLAN_SETTINGS: RunningPlanSettings = {
 export function buildRunningPlanFromSettings(
   settings: RunningPlanSettings,
 ): RunningPlan {
+  let plan: RunningPlan;
+
   if (settings.mode === "progressive") {
-    return buildProgressivePlan(settings);
+    plan = buildProgressivePlan(settings);
+  } else if (settings.mode === "interval") {
+    plan = buildIntervalPlan(settings);
+  } else {
+    plan = buildConstantPlan(settings);
   }
 
-  if (settings.mode === "interval") {
-    return buildIntervalPlan(settings);
+  return limitPlanDuration(plan, MAX_MULTI_TRACK_DURATION_SEC);
+}
+
+function limitPlanDuration(plan: RunningPlan, maxDurationSec: number): RunningPlan {
+  if (plan.totalDurationSec <= maxDurationSec) {
+    return plan;
   }
 
-  return buildConstantPlan(settings);
+  const segments = plan.segments.flatMap((segment) => {
+    if (segment.startSec >= maxDurationSec) {
+      return [];
+    }
+
+    return [{ ...segment, endSec: Math.min(segment.endSec, maxDurationSec) }];
+  });
+
+  return {
+    ...plan,
+    title: `${plan.title} (60 min max)`,
+    totalDurationSec: maxDurationSec,
+    segments,
+  };
 }
 
 export function getTargetCadenceAtSec(
@@ -163,17 +188,13 @@ function buildProgressivePlan(settings: RunningPlanSettings): RunningPlan {
     maxStretchPercent,
   });
 
-  cursorSec = appendSegment(segments, {
+  cursorSec = appendCadenceSteps(segments, {
     segmentId: "progressive-build",
     name: "tempo",
     startSec: cursorSec,
     durationSec: minutesToSeconds(buildMin),
-    targetCadence: averageCadence(startBpm, peakBpm),
-    cadenceRamp: {
-      start: startBpm,
-      end: peakBpm,
-      interpolation: "linear",
-    },
+    startBpm,
+    endBpm: peakBpm,
     targetEnergyRange: { min: 45, max: 80 },
     maxStretchPercent,
   });
@@ -188,17 +209,13 @@ function buildProgressivePlan(settings: RunningPlanSettings): RunningPlan {
     maxStretchPercent,
   });
 
-  cursorSec = appendSegment(segments, {
+  cursorSec = appendCadenceSteps(segments, {
     segmentId: "progressive-cooldown",
     name: "cooldown",
     startSec: cursorSec,
     durationSec: minutesToSeconds(cooldownMin),
-    targetCadence: averageCadence(peakBpm, endBpm),
-    cadenceRamp: {
-      start: peakBpm,
-      end: endBpm,
-      interpolation: "linear",
-    },
+    startBpm: peakBpm,
+    endBpm,
     targetEnergyRange: { min: 20, max: 50 },
     maxStretchPercent,
   });
@@ -323,6 +340,55 @@ function appendSegment(
   return endSec;
 }
 
+function appendCadenceSteps(
+  segments: RunSegment[],
+  args: {
+    segmentId: string;
+    name: RunSegmentName;
+    startSec: number;
+    durationSec: number;
+    startBpm: number;
+    endBpm: number;
+    targetEnergyRange: { min: number; max: number };
+    maxStretchPercent: number;
+  },
+): number {
+  if (args.durationSec <= 0) {
+    return args.startSec;
+  }
+
+  const cadenceDifference = args.endBpm - args.startBpm;
+  const stepCount = Math.max(
+    1,
+    Math.ceil(Math.abs(cadenceDifference) / PROGRESSIVE_CADENCE_STEP_BPM),
+  );
+  const segmentCount = stepCount + 1;
+  let cursorSec = args.startSec;
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const isLast = index === segmentCount - 1;
+    const targetEndSec = isLast
+      ? args.startSec + args.durationSec
+      : args.startSec + Math.round((args.durationSec * (index + 1)) / segmentCount);
+    const progress = stepCount === 0 ? 0 : index / stepCount;
+    const targetCadence = roundCadence(
+      args.startBpm + cadenceDifference * progress,
+    );
+
+    cursorSec = appendSegment(segments, {
+      segmentId: `${args.segmentId}-${index + 1}`,
+      name: args.name,
+      startSec: cursorSec,
+      durationSec: Math.max(1, targetEndSec - cursorSec),
+      targetCadence,
+      targetEnergyRange: args.targetEnergyRange,
+      maxStretchPercent: args.maxStretchPercent,
+    });
+  }
+
+  return args.startSec + args.durationSec;
+}
+
 function createSegment(args: {
   segmentId: string;
   name: RunSegmentName;
@@ -390,10 +456,6 @@ function clampNumber(
 
 function minutesToSeconds(minutes: number): number {
   return Math.round(minutes * SECONDS_PER_MINUTE);
-}
-
-function averageCadence(start: number, end: number): number {
-  return roundCadence((start + end) / 2);
 }
 
 function roundCadence(value: number): number {

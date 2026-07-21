@@ -3,6 +3,9 @@ import type { RawEnergyFeatures } from "../domain/mixTypes";
 const MAX_ANALYSIS_SECONDS = 120;
 const FRAME_SIZE = 1024;
 const HOP_SIZE = 512;
+const SPECTRAL_FRAME_SIZE = 512;
+const SPECTRAL_BIN_COUNT = 96;
+const MAX_SPECTRAL_FRAMES = 24;
 
 export function extractRawEnergyFeatures(audioBuffer: AudioBuffer): RawEnergyFeatures {
   const samples = downmixForEnergy(audioBuffer);
@@ -12,8 +15,45 @@ export function extractRawEnergyFeatures(audioBuffer: AudioBuffer): RawEnergyFea
   return {
     rms,
     onsetDensity: calculateOnsetDensity(envelope, audioBuffer.duration),
-    spectralCentroid: 0.5,
+    spectralCentroid: calculateNormalizedSpectralCentroid(samples),
   };
+}
+
+function calculateNormalizedSpectralCentroid(samples: Float32Array): number {
+  if (samples.length < SPECTRAL_FRAME_SIZE) {
+    return 0;
+  }
+
+  const availableFrames = Math.floor(samples.length / SPECTRAL_FRAME_SIZE);
+  const frameCount = Math.min(MAX_SPECTRAL_FRAMES, availableFrames);
+  const frameStride = Math.max(1, Math.floor(availableFrames / frameCount));
+  let weightedFrequency = 0;
+  let totalMagnitude = 0;
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const start = frame * frameStride * SPECTRAL_FRAME_SIZE;
+
+    for (let bin = 1; bin <= SPECTRAL_BIN_COUNT; bin += 1) {
+      let real = 0;
+      let imaginary = 0;
+
+      for (let index = 0; index < SPECTRAL_FRAME_SIZE; index += 1) {
+        const window = 0.5 - 0.5 * Math.cos(
+          (2 * Math.PI * index) / (SPECTRAL_FRAME_SIZE - 1),
+        );
+        const sample = (samples[start + index] ?? 0) * window;
+        const phase = (2 * Math.PI * bin * index) / SPECTRAL_FRAME_SIZE;
+        real += sample * Math.cos(phase);
+        imaginary -= sample * Math.sin(phase);
+      }
+
+      const magnitude = Math.hypot(real, imaginary);
+      weightedFrequency += (bin / SPECTRAL_BIN_COUNT) * magnitude;
+      totalMagnitude += magnitude;
+    }
+  }
+
+  return totalMagnitude > 0 ? weightedFrequency / totalMagnitude : 0;
 }
 
 function downmixForEnergy(audioBuffer: AudioBuffer): Float32Array {

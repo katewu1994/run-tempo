@@ -63,6 +63,8 @@ export function addMetronomeGrid(args: {
   clickVolume: number;
   accentEvery: 0 | 2 | 4 | 8;
   gain: number;
+  fadeInSec?: number;
+  fadeOutSec?: number;
 }): void {
   if (
     args.outputChannels.length === 0 ||
@@ -73,7 +75,7 @@ export function addMetronomeGrid(args: {
   }
 
   const intervalSec = 60 / args.targetCadence;
-  const gain = Math.max(0, args.clickVolume) * Math.max(0, args.gain);
+  const baseGain = Math.max(0, args.clickVolume) * Math.max(0, args.gain);
   let beatIndex = 0;
 
   for (
@@ -81,6 +83,15 @@ export function addMetronomeGrid(args: {
     clickTimeSec < args.endSec;
     clickTimeSec += intervalSec
   ) {
+    const elapsedSec = clickTimeSec - args.startSec;
+    const remainingSec = args.endSec - clickTimeSec;
+    const fadeInGain = args.fadeInSec
+      ? Math.min(1, Math.max(0, elapsedSec / args.fadeInSec))
+      : 1;
+    const fadeOutGain = args.fadeOutSec
+      ? Math.min(1, Math.max(0, remainingSec / args.fadeOutSec))
+      : 1;
+    const gain = baseGain * Math.min(fadeInGain, fadeOutGain);
     const isAccent =
       args.accentEvery > 0 && beatIndex % args.accentEvery === 0;
 
