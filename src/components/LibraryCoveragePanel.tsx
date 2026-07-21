@@ -1,4 +1,4 @@
-import { CircleAlert, LibraryBig, ShieldCheck } from "lucide-react";
+import { CircleAlert, ShieldCheck } from "lucide-react";
 import type { LibraryCoverageReport } from "../domain/mixTypes";
 import type { MultiTrackCopy } from "./multiTrackFormat";
 
@@ -9,56 +9,48 @@ export function LibraryCoveragePanel({
   report: LibraryCoverageReport;
   copy: MultiTrackCopy["coverage"];
 }) {
-  const isComplete = report.missingCadences.length === 0;
+  const hasMissing = report.missingCadences.length > 0;
+  const hasRiskyCadence = report.riskyCadences.length > 0;
+  const coverageState = hasMissing
+    ? "missing"
+    : hasRiskyCadence
+      ? "warning"
+      : "complete";
 
   return (
-    <section className="panel planner-panel coverage-panel" aria-labelledby="coverage-title">
-      <div className="panel-heading">
-        <div>
-          <span className="eyebrow">{copy.eyebrow}</span>
-          <h2 id="coverage-title">{copy.title}</h2>
-        </div>
-        <LibraryBig aria-hidden="true" />
-      </div>
-
-      <div className={`coverage-hero ${isComplete ? "complete" : "missing"}`}>
-        <span className="coverage-hero-icon" aria-hidden="true">
-          {isComplete ? <ShieldCheck size={24} /> : <CircleAlert size={24} />}
-        </span>
-        <div>
-          <strong>{copy.percent(report.coveragePercent)}</strong>
-          <p>
-            {isComplete
-              ? copy.completeHint
-              : copy.missingHint(report.missingCadences.length)}
-          </p>
-        </div>
-      </div>
-
-      <div className="coverage-cadence-grid">
-        {report.items.map((item) => (
-          <div className={`coverage-cadence ${item.status}`} key={item.targetCadence}>
-            <strong>{item.targetCadence} BPM</strong>
-            <span>{copy.status[item.status]}</span>
-            <small>
-              {copy.trackBreakdown(
-                item.finishedTrackCount,
-                item.rawTrackCount,
-              )}
-            </small>
-          </div>
-        ))}
-      </div>
-
-      {report.missingCadences.length > 0 ? (
-        <p className="coverage-recommendation">
-          {copy.makeInSingle(report.missingCadences.join(", "))}
+    <div className={`coverage-hero coverage-status ${coverageState}`} role="status">
+      <span className="coverage-hero-icon" aria-hidden="true">
+        {coverageState === "complete" ? (
+          <ShieldCheck size={24} />
+        ) : (
+          <CircleAlert size={24} />
+        )}
+      </span>
+      <div>
+        <strong>
+          {hasMissing
+            ? copy.notCompatible
+            : hasRiskyCadence
+              ? copy.adjustmentNeeded
+              : copy.compatible}
+        </strong>
+        <p>
+          {hasMissing
+            ? copy.missingHint(formatCadenceList(report.missingCadences))
+            : hasRiskyCadence
+              ? copy.riskyHint(formatCadenceList(report.riskyCadences))
+              : copy.completeHint}
         </p>
-      ) : report.thinCadences.length > 0 ? (
-        <p className="coverage-recommendation warning">
-          {copy.thinRecommendation(report.thinCadences.join(", "))}
-        </p>
-      ) : null}
-    </section>
+        {hasMissing ? (
+          <small className="coverage-rule-hint">{copy.clickLockedHint}</small>
+        ) : null}
+      </div>
+    </div>
   );
+}
+
+function formatCadenceList(cadences: number[]): string {
+  return cadences
+    .map((cadence) => Number.isInteger(cadence) ? cadence.toString() : cadence.toFixed(1))
+    .join(" / ");
 }

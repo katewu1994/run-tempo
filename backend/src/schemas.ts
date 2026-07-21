@@ -34,6 +34,26 @@ export const TrackFeatureSchema = z.object({
   rawEnergyFeatures: RawEnergyFeaturesSchema.nullable(),
   energyFeatureSource: z.enum(["embedded", "analyzed"]).optional(),
   normalizedEnergyScore: finiteNumber.min(0).max(100).nullable(),
+  musicalKey: z.object({
+    tonic: z.string().min(1),
+    mode: z.enum(["major", "minor"]),
+    confidence: finiteNumber.min(0).max(1),
+  }).nullable().optional(),
+  mood: z.object({
+    label: z.enum(["calm", "focused", "uplifting", "intense"]),
+    confidence: finiteNumber.min(0).max(1),
+    scores: z.object({
+      calm: finiteNumber.min(0).max(100), focused: finiteNumber.min(0).max(100),
+      uplifting: finiteNumber.min(0).max(100), intense: finiteNumber.min(0).max(100),
+    }),
+    source: z.enum(["musicnn", "acoustic_fallback"]),
+  }).nullable().optional(),
+  energyStructure: z.object({
+    openingEnergy: finiteNumber.min(0).max(100), middleEnergy: finiteNumber.min(0).max(100),
+    peakEnergy: finiteNumber.min(0).max(100), closingEnergy: finiteNumber.min(0).max(100),
+    dynamicRange: finiteNumber.min(0).max(100),
+    shape: z.enum(["flat", "build", "peak", "release", "arc"]),
+  }).nullable().optional(),
 });
 
 export const RunSegmentNameSchema = z.enum([
@@ -92,6 +112,8 @@ export const CandidateScoreSchema = z.object({
   interpretation: BpmInterpretationSchema,
   cadenceFitScore: finiteNumber.min(0).max(100),
   energyFitScore: finiteNumber.min(0).max(100),
+  structureFitScore: finiteNumber.min(0).max(100),
+  moodFitScore: finiteNumber.min(0).max(100),
   stabilityScore: finiteNumber.min(0).max(100),
   stretchRiskScore: finiteNumber.min(0).max(100),
   totalScore: finiteNumber.min(0).max(100),

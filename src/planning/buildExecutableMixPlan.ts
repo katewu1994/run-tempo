@@ -9,6 +9,10 @@ import type {
   StretchDecision,
   TrackFeature,
 } from "../domain/mixTypes";
+import {
+  MAX_EMBEDDED_CLICK_STRETCH_PERCENT,
+  trackHasEmbeddedClick,
+} from "./scoreCandidates";
 
 type ExecutableBlock = ExecutableMixPlan["blocks"][number];
 
@@ -132,7 +136,9 @@ export function buildExecutableMixPlan(args: {
         stretchRatio: resolved.stretchRatio,
         stretchDecision: resolved.stretchDecision,
         metronome: {
-          enabled: resolved.track.sourceKind !== "standardized",
+          enabled:
+            resolved.track.sourceKind !== "standardized" &&
+            resolved.track.embeddedClickStatus !== "confirmed",
           ...getRequiredMetronomePreference(
             resolved.selection.metronomePreference,
           ),
@@ -198,12 +204,7 @@ function resolveSelectionsForSegment(
     }
 
     const stretchRatio = segment.targetCadence / selectedSourceBpm;
-    const stretchDecision = getStretchDecision(
-      segment,
-      track,
-      selectedSourceBpm,
-      stretchRatio,
-    );
+    const stretchDecision = getStretchDecision(segment, selectedSourceBpm, track);
 
     if (stretchDecision === "skip_stretch") {
       return [];
@@ -263,26 +264,25 @@ function getRequiredMetronomePreference(
 
 function getStretchDecision(
   segment: RunSegment,
-  track: TrackFeature,
   selectedSourceBpm: number,
-  stretchRatio: number,
+  track: TrackFeature,
 ): StretchDecision {
-  const bpmDifference = Math.abs(segment.targetCadence - selectedSourceBpm);
-  const requiredStretchPercent = Math.abs(stretchRatio - 1) * 100;
+  const requiredStretchPercent = Math.abs(
+    segment.targetCadence / selectedSourceBpm - 1,
+  ) * 100;
 
-  if (track.sourceKind === "standardized") {
-    return bpmDifference <= 0.05 ? "no_stretch" : "skip_stretch";
-  }
-
-  if (bpmDifference <= 3) {
+  if (requiredStretchPercent <= 0.05) {
     return "no_stretch";
   }
 
-  if (requiredStretchPercent <= segment.maxStretchPercent) {
-    return "safe_stretch";
+  if (
+    trackHasEmbeddedClick(track) &&
+    requiredStretchPercent > MAX_EMBEDDED_CLICK_STRETCH_PERCENT
+  ) {
+    return "skip_stretch";
   }
 
-  return "skip_stretch";
+  return "safe_stretch";
 }
 
 function getBarAlignedCrossfadeSec(

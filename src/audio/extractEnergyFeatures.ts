@@ -1,4 +1,4 @@
-import type { RawEnergyFeatures } from "../domain/mixTypes";
+import type { EnergyStructureFeature, RawEnergyFeatures } from "../domain/mixTypes";
 
 const MAX_ANALYSIS_SECONDS = 120;
 const FRAME_SIZE = 1024;
@@ -17,6 +17,37 @@ export function extractRawEnergyFeatures(audioBuffer: AudioBuffer): RawEnergyFea
     onsetDensity: calculateOnsetDensity(envelope, audioBuffer.duration),
     spectralCentroid: calculateNormalizedSpectralCentroid(samples),
   };
+}
+
+export function extractEnergyStructure(
+  audioBuffer: AudioBuffer,
+): EnergyStructureFeature | null {
+  const envelope = buildEnergyEnvelope(downmixForEnergy(audioBuffer));
+  if (envelope.length < 5) return null;
+
+  const regions = Array.from({ length: 5 }, (_, index) => {
+    const start = Math.floor((index * envelope.length) / 5);
+    const end = Math.max(start + 1, Math.floor(((index + 1) * envelope.length) / 5));
+    const values = envelope.slice(start, end);
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  });
+  const max = Math.max(...regions);
+  const min = Math.min(...regions);
+  if (max <= 0) return null;
+  const scaled = regions.map((value) => (value / max) * 100);
+  const openingEnergy = scaled[0] ?? 0;
+  const middleEnergy = ((scaled[1] ?? 0) + (scaled[2] ?? 0) + (scaled[3] ?? 0)) / 3;
+  const closingEnergy = scaled[4] ?? 0;
+  const peakIndex = regions.indexOf(max);
+  const dynamicRange = ((max - min) / max) * 100;
+  let shape: EnergyStructureFeature["shape"] = "flat";
+  if (dynamicRange >= 15) {
+    if (closingEnergy - openingEnergy >= 12) shape = "build";
+    else if (openingEnergy - closingEnergy >= 12) shape = "release";
+    else if (peakIndex >= 1 && peakIndex <= 3) shape = peakIndex === 2 ? "peak" : "arc";
+  }
+
+  return { openingEnergy, middleEnergy, peakEnergy: 100, closingEnergy, dynamicRange, shape };
 }
 
 function calculateNormalizedSpectralCentroid(samples: Float32Array): number {

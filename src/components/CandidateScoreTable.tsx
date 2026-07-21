@@ -63,6 +63,8 @@ export function CandidateScoreTable({
                         <th scope="col">{copy.headers.total}</th>
                         <th scope="col">{copy.headers.cadence}</th>
                         <th scope="col">{copy.headers.energy}</th>
+                        <th scope="col">{copy.headers.structure}</th>
+                        <th scope="col">{copy.headers.mood}</th>
                         <th scope="col">{copy.headers.stretch}</th>
                       </tr>
                     </thead>
@@ -83,6 +85,8 @@ export function CandidateScoreTable({
                           <td>{formatScore(candidate.totalScore)}</td>
                           <td>{formatScore(candidate.cadenceFitScore)}</td>
                           <td>{formatScore(candidate.energyFitScore)}</td>
+                          <td>{formatScore(candidate.structureFitScore)}</td>
+                          <td>{formatScore(candidate.moodFitScore)}</td>
                           <td>{candidate.requiredStretchPercent.toFixed(1)}%</td>
                         </tr>
                       ))}

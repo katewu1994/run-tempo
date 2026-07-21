@@ -5,7 +5,14 @@ import type {
   RunSegmentName,
 } from "./mixTypes";
 
-export type RunningPlanMode = "constant" | "progressive" | "interval";
+export type RunningPlanMode = "constant" | "progressive" | "interval" | "custom";
+
+export type CustomPlanPart = {
+  partId: string;
+  name: RunSegmentName;
+  durationMin: number;
+  bpm: number;
+};
 
 export type RunningPlanSettings = {
   mode: RunningPlanMode;
@@ -31,6 +38,9 @@ export type RunningPlanSettings = {
     cooldownMin: number;
     fastBpm: number;
     slowBpm: number;
+  };
+  custom: {
+    parts: CustomPlanPart[];
   };
 };
 
@@ -64,8 +74,15 @@ export const DEFAULT_RUNNING_PLAN_SETTINGS: RunningPlanSettings = {
     slowMin: 2,
     repeats: 6,
     cooldownMin: 5,
-    fastBpm: 175,
-    slowBpm: 140,
+    fastBpm: 190,
+    slowBpm: 180,
+  },
+  custom: {
+    parts: [
+      { partId: "custom-warmup", name: "warmup", durationMin: 5, bpm: 180 },
+      { partId: "custom-steady", name: "steady", durationMin: 20, bpm: 180 },
+      { partId: "custom-cooldown", name: "cooldown", durationMin: 5, bpm: 180 },
+    ],
   },
 };
 
@@ -74,7 +91,9 @@ export function buildRunningPlanFromSettings(
 ): RunningPlan {
   let plan: RunningPlan;
 
-  if (settings.mode === "progressive") {
+  if (settings.mode === "custom") {
+    plan = buildCustomPlan(settings);
+  } else if (settings.mode === "progressive") {
     plan = buildProgressivePlan(settings);
   } else if (settings.mode === "interval") {
     plan = buildIntervalPlan(settings);
@@ -83,6 +102,63 @@ export function buildRunningPlanFromSettings(
   }
 
   return limitPlanDuration(plan, MAX_MULTI_TRACK_DURATION_SEC);
+}
+
+function buildCustomPlan(settings: RunningPlanSettings): RunningPlan {
+  const maxStretchPercent = sanitizeMaxStretchPercent(settings.maxStretchPercent);
+  const parts = settings.custom.parts.length > 0
+    ? settings.custom.parts.slice(0, 20)
+    : DEFAULT_RUNNING_PLAN_SETTINGS.custom.parts;
+  const segments: RunSegment[] = [];
+  const idValues: number[] = [];
+  let cursorSec = 0;
+
+  parts.forEach((part, index) => {
+    const durationMin = sanitizeMinutes(part.durationMin, 5, 0.5, 60);
+    const bpm = sanitizeBpm(part.bpm, 180);
+    const name = isRunSegmentName(part.name) ? part.name : "custom";
+    idValues.push(index, durationMin, bpm, RUN_SEGMENT_NAMES.indexOf(name));
+    cursorSec = appendSegment(segments, {
+      segmentId: `custom-${index + 1}-${sanitizeIdToken(part.partId)}`,
+      name,
+      startSec: cursorSec,
+      durationSec: minutesToSeconds(durationMin),
+      targetCadence: bpm,
+      targetEnergyRange: getEnergyRangeForSegment(name),
+      maxStretchPercent,
+    });
+  });
+
+  return {
+    planId: createPlanId("custom", [...idValues, maxStretchPercent]),
+    title: `Custom run - ${formatMinutes(cursorSec / SECONDS_PER_MINUTE)}`,
+    totalDurationSec: cursorSec,
+    segments,
+  };
+}
+
+const RUN_SEGMENT_NAMES: RunSegmentName[] = [
+  "warmup", "steady", "tempo", "recovery", "finish", "cooldown", "custom",
+];
+
+function isRunSegmentName(value: string): value is RunSegmentName {
+  return RUN_SEGMENT_NAMES.includes(value as RunSegmentName);
+}
+
+function getEnergyRangeForSegment(name: RunSegmentName): { min: number; max: number } {
+  switch (name) {
+    case "warmup": return { min: 25, max: 50 };
+    case "tempo": return { min: 60, max: 90 };
+    case "recovery": return { min: 25, max: 55 };
+    case "finish": return { min: 65, max: 95 };
+    case "cooldown": return { min: 20, max: 50 };
+    default: return { min: 40, max: 70 };
+  }
+}
+
+function sanitizeIdToken(value: string): string {
+  const token = value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40);
+  return token || "part";
 }
 
 function limitPlanDuration(plan: RunningPlan, maxDurationSec: number): RunningPlan {

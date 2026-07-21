@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AudioWaveform,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
@@ -704,9 +703,14 @@ function App() {
     <main className="app-shell">
       <header className="top-bar">
         <div className="brand-lockup" aria-label="RunTempo home">
-          <span className="brand-mark" aria-hidden="true">
-            <AudioWaveform size={18} strokeWidth={2.4} />
-          </span>
+          <img
+            className="brand-mark"
+            src="/runtempo-mark.svg?v=2"
+            width="34"
+            height="34"
+            alt=""
+            aria-hidden="true"
+          />
           <span className="brand-copy">
             <span className="brand-name">RunTempo</span>
             <span className="brand-slogan">Cadence studio</span>

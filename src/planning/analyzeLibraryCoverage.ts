@@ -4,6 +4,7 @@ import type {
   RunningPlan,
   TrackFeature,
 } from "../domain/mixTypes";
+import { FREE_STRETCH_WARNING_PERCENT } from "./scoreCandidates";
 
 export function analyzeLibraryCoverage(args: {
   runningPlan: RunningPlan;
@@ -17,18 +18,27 @@ export function analyzeLibraryCoverage(args: {
   const candidatesBySegmentId = new Map(
     args.candidateGroups.map((group) => [group.segmentId, group.topCandidates]),
   );
-  const cadenceGroups = new Map<number, { segmentIds: string[]; trackIds: Set<string> }>();
+  const cadenceGroups = new Map<
+    number,
+    {
+      segmentIds: string[];
+      trackIds: Set<string>;
+      requiredStretchPercents: number[];
+    }
+  >();
 
   for (const segment of args.runningPlan.segments) {
     const cadence = Math.round(segment.targetCadence * 10) / 10;
     const group = cadenceGroups.get(cadence) ?? {
       segmentIds: [],
       trackIds: new Set<string>(),
+      requiredStretchPercents: [],
     };
     group.segmentIds.push(segment.segmentId);
 
     for (const candidate of candidatesBySegmentId.get(segment.segmentId) ?? []) {
       group.trackIds.add(candidate.trackId);
+      group.requiredStretchPercents.push(candidate.requiredStretchPercent);
     }
 
     cadenceGroups.set(cadence, group);
@@ -44,6 +54,19 @@ export function analyzeLibraryCoverage(args: {
       const rawTrackCount = candidateTrackIds.filter(
         (trackId) => tracksById.get(trackId)?.sourceKind === "raw",
       ).length;
+      const minimumRequiredStretchPercent =
+        group.requiredStretchPercents.length > 0
+          ? Math.min(...group.requiredStretchPercents)
+          : null;
+      const status =
+        candidateTrackIds.length === 0
+          ? "missing" as const
+          : minimumRequiredStretchPercent !== null &&
+              minimumRequiredStretchPercent > FREE_STRETCH_WARNING_PERCENT
+            ? "risky" as const
+            : candidateTrackIds.length < 2
+              ? "thin" as const
+              : "covered" as const;
 
       return {
         targetCadence,
@@ -51,12 +74,8 @@ export function analyzeLibraryCoverage(args: {
         candidateTrackIds,
         finishedTrackCount,
         rawTrackCount,
-        status:
-          candidateTrackIds.length === 0
-            ? "missing" as const
-            : candidateTrackIds.length < 2
-              ? "thin" as const
-              : "covered" as const,
+        minimumRequiredStretchPercent,
+        status,
       };
     });
   const coveredCadenceCount = items.filter((item) => item.status !== "missing").length;
@@ -75,6 +94,9 @@ export function analyzeLibraryCoverage(args: {
       .map((item) => item.targetCadence),
     thinCadences: items
       .filter((item) => item.status === "thin")
+      .map((item) => item.targetCadence),
+    riskyCadences: items
+      .filter((item) => item.status === "risky")
       .map((item) => item.targetCadence),
   };
 }

@@ -10,7 +10,6 @@ import {
 type ExecutableMixPlanViewProps = {
   tracks: TrackFeature[];
   executablePlan: ExecutableMixPlan;
-  mixTitle: string;
   copy: MultiTrackCopy["executable"];
   isRendering: boolean;
   renderedDurationSec: number | null;
@@ -22,7 +21,6 @@ type ExecutableMixPlanViewProps = {
 export function ExecutableMixPlanView({
   tracks,
   executablePlan,
-  mixTitle,
   copy,
   isRendering,
   renderedDurationSec,
@@ -45,69 +43,21 @@ export function ExecutableMixPlanView({
 
       <dl className="summary-grid planner-summary">
         <div>
-          <dt>{copy.summary.mixTitle}</dt>
-          <dd>{mixTitle}</dd>
-        </div>
-        <div>
           <dt>{copy.summary.totalDuration}</dt>
           <dd>{formatDuration(executablePlan.totalDurationSec)}</dd>
         </div>
       </dl>
 
-      <div className="table-wrap">
-        <table className="planner-table">
-          <thead>
-            <tr>
-              <th scope="col">{copy.headers.block}</th>
-              <th scope="col">{copy.headers.track}</th>
-              <th scope="col">{copy.headers.mixTime}</th>
-              <th scope="col">{copy.headers.source}</th>
-              <th scope="col">{copy.headers.cadence}</th>
-              <th scope="col">{copy.headers.click}</th>
-              <th scope="col">{copy.headers.stretch}</th>
-              <th scope="col">{copy.headers.transition}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {executablePlan.blocks.map((block) => (
-              <tr key={block.blockId}>
-                <td>{block.blockId}</td>
-                <td>{tracksById.get(block.trackId)?.fileName ?? block.trackId}</td>
-                <td>
-                  {formatDuration(block.mixStartSec)}-{formatDuration(block.mixEndSec)}
-                </td>
-                <td>
-                  {formatDuration(block.sourceStartSec)}-
-                  {formatDuration(block.sourceEndSec)}
-                </td>
-                <td>
-                  {formatCadenceTarget(block.targetCadence, block.cadenceRamp)} /{" "}
-                  {block.selectedSourceBpm.toFixed(1)}
-                </td>
-                <td>
-                  {block.metronome.enabled
-                    ? copy.clickVolume(block.metronome.clickVolume)
-                    : copy.embeddedClick}
-                </td>
-                <td>
-                  {block.stretchRatio.toFixed(3)}x{" "}
-                  <span className={`decision-pill ${block.stretchDecision}`}>
-                    {getLocalizedStretchDecision(
-                      copy.stretchDecisions,
-                      block.stretchDecision,
-                    )}
-                  </span>
-                </td>
-                <td>
-                  {copy.transitionCrossfade(
-                    block.transition.crossfadeWithPreviousSec,
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ol className="simple-mix-list">
+        {executablePlan.blocks.map((block) => (
+          <li key={block.blockId}>
+            <span>{tracksById.get(block.trackId)?.fileName ?? block.trackId}</span>
+            <small>
+              {formatDuration(block.mixStartSec)}–{formatDuration(block.mixEndSec)}
+            </small>
+          </li>
+        ))}
+      </ol>
 
       {warnings.length > 0 ? (
         <div className="render-warning-list" role="status">

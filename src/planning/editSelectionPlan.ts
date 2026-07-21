@@ -9,59 +9,6 @@ type CandidateGroup = {
   topCandidates: CandidateScore[];
 };
 
-export function getLockedSelectionKey(segmentId: string, trackId: string): string {
-  return `${segmentId}:${trackId}`;
-}
-
-export function mergeLockedSelections(args: {
-  targetPlan: OpenAISelectionPlan;
-  currentPlan: OpenAISelectionPlan;
-  lockedSelectionKeys: Set<string>;
-}): OpenAISelectionPlan {
-  const currentBySegmentId = new Map(
-    args.currentPlan.segmentPlans.map((segmentPlan) => [
-      segmentPlan.segmentId,
-      segmentPlan.rankedTrackSelections,
-    ]),
-  );
-
-  return {
-    ...args.targetPlan,
-    segmentPlans: args.targetPlan.segmentPlans.map((targetSegmentPlan) => {
-      const currentSelections = currentBySegmentId.get(targetSegmentPlan.segmentId) ?? [];
-      const selections = [...targetSegmentPlan.rankedTrackSelections];
-
-      currentSelections.forEach((selection, currentIndex) => {
-        if (
-          !args.lockedSelectionKeys.has(
-            getLockedSelectionKey(targetSegmentPlan.segmentId, selection.trackId),
-          )
-        ) {
-          return;
-        }
-
-        const existingIndex = selections.findIndex(
-          (item) => item.trackId === selection.trackId,
-        );
-
-        if (existingIndex >= 0) {
-          selections.splice(existingIndex, 1);
-        }
-
-        selections.splice(Math.min(currentIndex, selections.length), 0, selection);
-      });
-
-      return {
-        ...targetSegmentPlan,
-        rankedTrackSelections: selections.slice(
-          0,
-          targetSegmentPlan.rankedTrackSelections.length,
-        ),
-      };
-    }),
-  };
-}
-
 export function summarizeSelectionPlan(
   plan: OpenAISelectionPlan,
   candidateGroups: CandidateGroup[],
@@ -103,35 +50,6 @@ export function summarizeSelectionPlan(
       scores.length > 0
         ? scores.reduce((total, score) => total + score, 0) / scores.length
         : 0,
-  };
-}
-
-export function replaceSelection(
-  plan: OpenAISelectionPlan,
-  segmentId: string,
-  index: number,
-  candidate: CandidateScore,
-): OpenAISelectionPlan {
-  return {
-    ...plan,
-    segmentPlans: plan.segmentPlans.map((segmentPlan) =>
-      segmentPlan.segmentId !== segmentId
-        ? segmentPlan
-        : {
-            ...segmentPlan,
-            rankedTrackSelections: segmentPlan.rankedTrackSelections.map(
-              (selection, selectionIndex) =>
-                selectionIndex === index
-                  ? {
-                      ...selection,
-                      trackId: candidate.trackId,
-                      selectedBpmInterpretation: candidate.interpretation,
-                      reason: `Manual replacement · score ${Math.round(candidate.totalScore)} · cadence ${Math.round(candidate.cadenceFitScore)} · energy ${Math.round(candidate.energyFitScore)}`,
-                    }
-                  : selection,
-            ),
-          },
-    ),
   };
 }
 

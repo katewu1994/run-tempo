@@ -258,17 +258,9 @@ function repairSelectionsForSegment({
 
 function getStretchSafeCandidatePool(
   candidates: CandidateScore[],
-  segment: RunSegment,
+  _segment: RunSegment,
 ): CandidateScore[] {
-  const stretchSafeCandidates = candidates.filter(
-    (candidate) => candidate.requiredStretchPercent <= segment.maxStretchPercent,
-  );
-
-  if (stretchSafeCandidates.length > 0) {
-    return stretchSafeCandidates;
-  }
-
-  return [];
+  return candidates;
 }
 
 function normalizeMetronomePreference(raw: unknown): TrackSelection["metronomePreference"] {
@@ -345,6 +337,8 @@ function getCandidateReason(candidate: CandidateScore): string {
     `total ${formatScore(candidate.totalScore)}`,
     `BPM fit ${formatScore(candidate.cadenceFitScore)} at ${candidate.bestCandidateBpm.toFixed(1)} BPM`,
     `energy fit ${formatScore(candidate.energyFitScore)}`,
+    `structure fit ${formatScore(candidate.structureFitScore)}`,
+    `mood fit ${formatScore(candidate.moodFitScore)}`,
     `stretch ${candidate.requiredStretchPercent.toFixed(1)}%`,
   ].join("; ");
 }

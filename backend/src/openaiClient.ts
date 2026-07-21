@@ -34,9 +34,13 @@ Hard rules:
 - Prefer candidates with high totalScore.
 - Prefer BPM candidates close to targetCadence.
 - Tracks marked sourceKind "standardized" already contain their cadence click; treat their 1:1 embeddedCadenceBpm as authoritative.
-- Treat each segment's maxStretchPercent as a hard limit whenever at least one candidate is within that limit.
+- Confirmed-click tracks may change by at most 5%. Exclude them beyond that limit.
+- Tracks without a confirmed click remain selectable at any stretch; over 15% is a warning, not a hard exclusion.
 - Prefer lower energy for warmup/cooldown.
 - Prefer higher energy for finish/tempo.
+- Use structureFitScore and moodFitScore alongside cadence and energy.
+- Prefer harmonically compatible consecutive musicalKey values when quality is comparable.
+- Do not use tempo stability as a planning factor; RunTempo adds a cadence click later.
 - Respect allowTrackReuse.
 - Respect allowLoop. If it is true, return a strong unique ranking; the app can repeat the ranked tracks if the target duration is longer than the available audio.
 - Respect maxTracksPerSegment.
@@ -228,9 +232,14 @@ function minimizeCandidate(candidate: CandidateScore, track: TrackFeature | unde
     bestCandidateBpm: candidate.bestCandidateBpm,
     interpretation: candidate.interpretation,
     normalizedEnergyScore: track?.normalizedEnergyScore ?? null,
+    musicalKey: track?.musicalKey ?? null,
+    mood: track?.mood ?? null,
+    energyStructure: track?.energyStructure ?? null,
     totalScore: candidate.totalScore,
     cadenceFitScore: candidate.cadenceFitScore,
     energyFitScore: candidate.energyFitScore,
+    structureFitScore: candidate.structureFitScore,
+    moodFitScore: candidate.moodFitScore,
     requiredStretchPercent: candidate.requiredStretchPercent,
   };
 }

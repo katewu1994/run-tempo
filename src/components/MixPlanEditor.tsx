@@ -1,21 +1,17 @@
 import { useState, type DragEvent } from "react";
-import {
-  ArrowDown,
-  ArrowUp,
-  GripVertical,
-  ListRestart,
-  Lock,
-  Unlock,
-} from "lucide-react";
+import { GripVertical } from "lucide-react";
 import type {
+  BpmInterpretation,
   CandidateScore,
   OpenAISelectionPlan,
   RunningPlan,
   TrackFeature,
 } from "../domain/mixTypes";
 import type { MultiTrackCopy } from "./multiTrackFormat";
-import { getLocalizedSegmentName } from "./multiTrackFormat";
-import { getLockedSelectionKey } from "../planning/editSelectionPlan";
+import {
+  getLocalizedBpmInterpretation,
+  getLocalizedSegmentName,
+} from "./multiTrackFormat";
 
 type DragSelection = { segmentId: string; index: number } | null;
 
@@ -24,34 +20,45 @@ export function MixPlanEditor({
   selectionPlan,
   tracks,
   candidateGroups,
-  lockedSelectionKeys,
   isBusy,
   copy,
+  analysisCopy,
   segmentNames,
-  onToggleLock,
-  onReplace,
   onMove,
 }: {
   runningPlan: RunningPlan;
   selectionPlan: OpenAISelectionPlan;
   tracks: TrackFeature[];
-  candidateGroups: Array<{ segmentId: string; topCandidates: CandidateScore[] }>;
-  lockedSelectionKeys: Set<string>;
+  candidateGroups: Array<{
+    segmentId: string;
+    topCandidates: CandidateScore[];
+  }>;
   isBusy: boolean;
   copy: MultiTrackCopy["editor"];
+  analysisCopy: MultiTrackCopy["candidates"];
   segmentNames: MultiTrackCopy["runningPlan"]["segmentNames"];
-  onToggleLock: (segmentId: string, trackId: string) => void;
-  onReplace: (segmentId: string, index: number, trackId: string) => void;
   onMove: (segmentId: string, fromIndex: number, toIndex: number) => void;
 }) {
   const [dragSelection, setDragSelection] = useState<DragSelection>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const tracksById = new Map(tracks.map((track) => [track.trackId, track]));
   const segmentsById = new Map(
     runningPlan.segments.map((segment) => [segment.segmentId, segment]),
   );
-  const candidatesBySegmentId = new Map(
-    candidateGroups.map((group) => [group.segmentId, group.topCandidates]),
-  );
+  const candidatesBySelectionKey = new Map<string, CandidateScore>();
+
+  for (const group of candidateGroups) {
+    for (const candidate of group.topCandidates) {
+      candidatesBySelectionKey.set(
+        getSelectionKey(
+          group.segmentId,
+          candidate.trackId,
+          candidate.interpretation,
+        ),
+        candidate,
+      );
+    }
+  }
 
   const handleDrop = (
     event: DragEvent<HTMLLIElement>,
@@ -65,27 +72,20 @@ export function MixPlanEditor({
     }
 
     setDragSelection(null);
+    setDragOverIndex(null);
   };
 
   return (
     <section className="panel planner-panel sequence-editor" aria-labelledby="sequence-editor-title">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">{copy.eyebrow}</span>
           <h2 id="sequence-editor-title">{copy.title}</h2>
-          <p className="field-hint">{copy.hint}</p>
         </div>
-        <ListRestart aria-hidden="true" />
       </div>
 
       <div className="sequence-groups">
         {selectionPlan.segmentPlans.map((segmentPlan) => {
           const segment = segmentsById.get(segmentPlan.segmentId);
-          const selectedTrackIds = new Set(
-            segmentPlan.rankedTrackSelections.map((selection) => selection.trackId),
-          );
-          const candidates = candidatesBySegmentId.get(segmentPlan.segmentId) ?? [];
-
           if (!segment || segmentPlan.rankedTrackSelections.length === 0) {
             return null;
           }
@@ -98,79 +98,59 @@ export function MixPlanEditor({
               </div>
               <ol>
                 {segmentPlan.rankedTrackSelections.map((selection, index) => {
-                  const key = getLockedSelectionKey(segmentPlan.segmentId, selection.trackId);
-                  const locked = lockedSelectionKeys.has(key);
+                  const candidate = candidatesBySelectionKey.get(
+                    getSelectionKey(
+                      segmentPlan.segmentId,
+                      selection.trackId,
+                      selection.selectedBpmInterpretation,
+                    ),
+                  );
+                  const dragging = dragSelection?.segmentId === segmentPlan.segmentId && dragSelection.index === index;
+                  const dragTarget = dragSelection?.segmentId === segmentPlan.segmentId && dragOverIndex === index;
 
                   return (
                     <li
-                      className={`sequence-row ${locked ? "locked" : ""}`}
+                      className={`sequence-row ${dragging ? "dragging" : ""} ${dragTarget ? "drag-target" : ""}`}
                       draggable={!isBusy}
                       key={`${selection.trackId}-${index}`}
                       onDragStart={() =>
                         setDragSelection({ segmentId: segmentPlan.segmentId, index })
                       }
-                      onDragEnd={() => setDragSelection(null)}
+                      onDragEnd={() => {
+                        setDragSelection(null);
+                        setDragOverIndex(null);
+                      }}
                       onDragOver={(event) => event.preventDefault()}
+                      onDragEnter={() => setDragOverIndex(index)}
                       onDrop={(event) => handleDrop(event, segmentPlan.segmentId, index)}
                     >
-                      <span className="sequence-grip" aria-hidden="true">
+                      <span className="sequence-grip" title={copy.drag}>
                         <GripVertical size={18} />
+                        <span className="sr-only">{copy.drag}</span>
                       </span>
                       <span className="sequence-index">{index + 1}</span>
                       <div className="sequence-track-copy">
                         <strong>{tracksById.get(selection.trackId)?.fileName ?? selection.trackId}</strong>
-                        <small>{selection.reason}</small>
                       </div>
-                      <label className="sequence-replace-field">
-                        <span className="sr-only">{copy.replace}</span>
-                        <select
-                          aria-label={`${copy.replace}: ${tracksById.get(selection.trackId)?.fileName ?? selection.trackId}`}
-                          disabled={isBusy || locked}
-                          value={selection.trackId}
-                          onChange={(event) =>
-                            onReplace(segmentPlan.segmentId, index, event.target.value)
-                          }
-                        >
-                          {candidates.map((candidate) => (
-                            <option
-                              key={candidate.trackId}
-                              value={candidate.trackId}
-                              disabled={
-                                candidate.trackId !== selection.trackId &&
-                                selectedTrackIds.has(candidate.trackId)
-                              }
-                            >
-                              {tracksById.get(candidate.trackId)?.fileName ?? candidate.trackId}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="sequence-actions">
-                        <button
-                          type="button"
-                          className="icon-action"
-                          disabled={isBusy || index === 0}
-                          aria-label={copy.moveUp}
-                          onClick={() => onMove(segmentPlan.segmentId, index, index - 1)}
-                        ><ArrowUp size={15} aria-hidden="true" /></button>
-                        <button
-                          type="button"
-                          className="icon-action"
-                          disabled={isBusy || index === segmentPlan.rankedTrackSelections.length - 1}
-                          aria-label={copy.moveDown}
-                          onClick={() => onMove(segmentPlan.segmentId, index, index + 1)}
-                        ><ArrowDown size={15} aria-hidden="true" /></button>
-                        <button
-                          type="button"
-                          className={`icon-action sequence-lock ${locked ? "active" : ""}`}
-                          disabled={isBusy}
-                          aria-label={locked ? copy.unlock : copy.lock}
-                          aria-pressed={locked}
-                          onClick={() => onToggleLock(segmentPlan.segmentId, selection.trackId)}
-                        >
-                          {locked ? <Lock size={15} aria-hidden="true" /> : <Unlock size={15} aria-hidden="true" />}
-                        </button>
-                      </div>
+                      {candidate ? (
+                        <div className="sequence-analysis" aria-label={copy.analysis}>
+                          <span className="sequence-analysis-bpm">
+                            {candidate.bestCandidateBpm.toFixed(1)} BPM
+                          </span>
+                          <span>
+                            {getLocalizedBpmInterpretation(
+                              analysisCopy.interpretations,
+                              selection.selectedBpmInterpretation,
+                            )}
+                          </span>
+                          <span>{analysisCopy.headers.total} {formatScore(candidate.totalScore)}</span>
+                          <span>{analysisCopy.headers.cadence} {formatScore(candidate.cadenceFitScore)}</span>
+                          <span>{analysisCopy.headers.energy} {formatScore(candidate.energyFitScore)}</span>
+                          <span>{analysisCopy.headers.structure} {formatScore(candidate.structureFitScore)}</span>
+                          <span>{analysisCopy.headers.mood} {formatScore(candidate.moodFitScore)}</span>
+                          <span>{analysisCopy.headers.stretch} {candidate.requiredStretchPercent.toFixed(1)}%</span>
+                        </div>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -181,4 +161,16 @@ export function MixPlanEditor({
       </div>
     </section>
   );
+}
+
+function getSelectionKey(
+  segmentId: string,
+  trackId: string,
+  interpretation: BpmInterpretation,
+): string {
+  return `${segmentId}:${trackId}:${interpretation}`;
+}
+
+function formatScore(value: number): string {
+  return Math.round(value).toString();
 }

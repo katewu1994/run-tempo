@@ -10,9 +10,15 @@ type TrackFeatureTableProps = {
   tracks: TrackFeature[];
   copy: MultiTrackCopy["tracks"];
   onRemove?: (trackId: string) => void;
+  onEmbeddedClickChange?: (trackId: string, isConfirmed: boolean) => void;
 };
 
-export function TrackFeatureTable({ tracks, copy, onRemove }: TrackFeatureTableProps) {
+export function TrackFeatureTable({
+  tracks,
+  copy,
+  onRemove,
+  onEmbeddedClickChange,
+}: TrackFeatureTableProps) {
   return (
     <section className="panel planner-panel" aria-labelledby="tracks-title">
       <div className="panel-heading">
@@ -27,11 +33,12 @@ export function TrackFeatureTable({ tracks, copy, onRemove }: TrackFeatureTableP
           <thead>
             <tr>
               <th scope="col">{copy.headers.file}</th>
-              <th scope="col">{copy.headers.source}</th>
+              <th scope="col">{copy.headers.click}</th>
               <th scope="col">{copy.headers.duration}</th>
               <th scope="col">{copy.headers.detectedBpm}</th>
               <th scope="col">{copy.headers.candidates}</th>
               <th scope="col">{copy.headers.energy}</th>
+              <th scope="col">{copy.headers.key}</th>
               {onRemove ? <th scope="col"><span className="sr-only">{copy.remove}</span></th> : null}
             </tr>
           </thead>
@@ -47,9 +54,46 @@ export function TrackFeatureTable({ tracks, copy, onRemove }: TrackFeatureTableP
                   ) : null}
                 </td>
                 <td>
-                  <span className={`source-kind-pill ${track.sourceKind}`}>
-                    {copy.sourceLabels[track.sourceKind]}
-                  </span>
+                  <div className="embedded-click-cell">
+                    <span className={`embedded-click-status ${track.embeddedClickStatus ?? "not_detected"}`}>
+                      {copy.clickStatus[track.embeddedClickStatus ?? "not_detected"]}
+                    </span>
+                    {track.embeddedClickStatus === "suspected" && onEmbeddedClickChange ? (
+                      <div
+                        className="embedded-click-confirmation"
+                        role="group"
+                        aria-label={copy.clickConfirmationHint}
+                      >
+                        <span className="embedded-click-actions">
+                          <button
+                            type="button"
+                            className="embedded-click-choice included"
+                            onClick={() => onEmbeddedClickChange(track.trackId, true)}
+                          >
+                            {copy.confirmEmbeddedClick}
+                          </button>
+                          <button
+                            type="button"
+                            className="embedded-click-choice not-included"
+                            onClick={() => onEmbeddedClickChange(track.trackId, false)}
+                          >
+                            {copy.confirmNoEmbeddedClick}
+                          </button>
+                        </span>
+                      </div>
+                    ) : null}
+                    {track.embeddedClickStatus === "confirmed" &&
+                    track.sourceKind === "raw" &&
+                    onEmbeddedClickChange ? (
+                      <button
+                        type="button"
+                        className="text-action embedded-click-confirm"
+                        onClick={() => onEmbeddedClickChange(track.trackId, false)}
+                      >
+                        {copy.undoEmbeddedClick}
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
                 <td>{formatDuration(track.durationSec)}</td>
                 <td>{formatBpm(track.detectedBpm)}</td>
@@ -61,11 +105,15 @@ export function TrackFeatureTable({ tracks, copy, onRemove }: TrackFeatureTableP
                           className="metric-tag"
                           key={`${track.trackId}-${candidate.interpretation}`}
                         >
-                          {formatBpm(candidate.bpm)}{" "}
-                          {getLocalizedBpmInterpretation(
-                            copy.interpretations,
-                            candidate.interpretation,
-                          )}
+                          <span className="candidate-bpm">
+                            {formatBpm(candidate.bpm)}
+                          </span>
+                          <span className="candidate-ratio">
+                            {getLocalizedBpmInterpretation(
+                              copy.interpretations,
+                              candidate.interpretation,
+                            )}
+                          </span>
                         </span>
                       ))
                     ) : (
@@ -74,6 +122,7 @@ export function TrackFeatureTable({ tracks, copy, onRemove }: TrackFeatureTableP
                   </div>
                 </td>
                 <td>{formatScore(track.normalizedEnergyScore)}</td>
+                <td>{track.musicalKey ? `${track.musicalKey.tonic} ${track.musicalKey.mode === "major" ? copy.major : copy.minor}` : "--"}</td>
                 {onRemove ? (
                   <td>
                     <button

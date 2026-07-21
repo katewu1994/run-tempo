@@ -1,26 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   FileAudio,
   FolderOpen,
-  HardDrive,
   LoaderCircle,
   MousePointerClick,
   Trash2,
-  Upload,
   Volume2,
 } from "lucide-react";
 import { analyzeBpm } from "../audio/analyzeBpm";
 import { estimateAutoBeatSync } from "../audio/autoBeatSync";
 import { getBpmCandidates, normalizeBpm } from "../audio/bpmCandidates";
 import { decodeAudioFile } from "../audio/decodeAudio";
+import { detectEmbeddedClick } from "../audio/detectEmbeddedClick";
+import { analyzeMood } from "../audio/analyzeMood";
+import { analyzeMusicalKey } from "../audio/analyzeMusicalKey";
 import { normalizeTrackEnergy } from "../audio/energyNormalization";
 import { audioBufferToWavBlob } from "../audio/exportWav";
-import { extractRawEnergyFeatures } from "../audio/extractEnergyFeatures";
+import { extractEnergyStructure, extractRawEnergyFeatures } from "../audio/extractEnergyFeatures";
 import type { TrackAudioMap, TrackFileMap } from "../audio/multiTrackTypes";
 import { renderExecutableMixPlan } from "../audio/renderExecutableMixPlan";
 import {
@@ -28,7 +26,6 @@ import {
   createTrackImportKey,
   getSupportedAudioFiles,
   getTrackRelativePath,
-  parseStandardizedTrackCadence,
   readRunTempoWavMetadata,
 } from "../audio/standardizedTrackLibrary";
 import {
@@ -61,10 +58,7 @@ import { getTopCandidatesBySegment } from "../planning/scoreCandidates";
 import { analyzeLibraryCoverage } from "../planning/analyzeLibraryCoverage";
 import { createMixPlanVariants } from "../planning/createMixPlanVariants";
 import {
-  getLockedSelectionKey,
-  mergeLockedSelections,
   moveSelection,
-  replaceSelection,
   summarizeSelectionPlan,
 } from "../planning/editSelectionPlan";
 import { formatPercent } from "../utils/format";
@@ -73,7 +67,6 @@ import { ExecutableMixPlanView } from "./ExecutableMixPlanView";
 import { MixTrackListView } from "./MixTrackListView";
 import { RunningPlanSelector } from "./RunningPlanSelector";
 import { TrackFeatureTable } from "./TrackFeatureTable";
-import { LibraryCoveragePanel } from "./LibraryCoveragePanel";
 import { PlanVariantPicker } from "./PlanVariantPicker";
 import { MixPlanEditor } from "./MixPlanEditor";
 import {
@@ -95,7 +88,7 @@ const DEFAULT_MULTI_TRACK_CLICK_SETTINGS: MetronomePreference = {
 };
 const DEFAULT_SEQUENCE_RULES: GlobalSequenceRules = {
   minRepeatGapTracks: 3,
-  maxTracksPerSegment: 4,
+  maxTracksPerSegment: 10,
   preferFolderVariety: true,
 };
 const DIRECTORY_INPUT_PROPS = {
@@ -123,12 +116,11 @@ type PlannerError =
   | { kind: "decodeFailures"; count: number }
   | { kind: "noDecodedFiles" }
   | { kind: "noAudioFiles" }
-  | { kind: "invalidStandardizedNames"; count: number }
   | { kind: "planning"; message: string | null };
 
 type PlannerRunState = "ready" | "running" | "complete" | "failed";
 type PlannerEngine = "auto" | "gpt" | "local";
-type PlannerResultSource = "gpt" | "local" | "local-fallback" | null;
+type PlannerResultSource = "gpt" | "local" | null;
 
 type MultiTrackPlannerProps = {
   copy: MultiTrackCopy;
@@ -145,8 +137,6 @@ export function MultiTrackPlanner({
   const renderedPlaybackSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const importRequestIdRef = useRef(0);
   const [currentStep, setCurrentStep] = useState(1);
-  const [activeImportSource, setActiveImportSource] =
-    useState<TrackSourceKind>("standardized");
   const [tracks, setTracks] = useState<TrackFeature[]>([]);
   const [trackFileMap, setTrackFileMap] = useState<TrackFileMap>({});
   const [selectedTrackAudioMap, setSelectedTrackAudioMap] =
@@ -171,15 +161,9 @@ export function MultiTrackPlanner({
   const [plannerEngine, setPlannerEngine] = useState<PlannerEngine>("auto");
   const [plannerResultSource, setPlannerResultSource] =
     useState<PlannerResultSource>(null);
-  const [sequenceRules, setSequenceRules] = useState<GlobalSequenceRules>(
-    DEFAULT_SEQUENCE_RULES,
-  );
   const [planVariants, setPlanVariants] = useState<MixPlanVariant[]>([]);
   const [activeVariantId, setActiveVariantId] =
     useState<MixPlanStrategy>("balanced");
-  const [lockedSelectionKeys, setLockedSelectionKeys] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [isApplyingPlan, setIsApplyingPlan] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState<AnalysisMessage | null>(
     null,
@@ -199,7 +183,12 @@ export function MultiTrackPlanner({
       } catch {
         // Preview may already have ended.
       }
-      void audioContextRef.current?.close();
+      const audioContext = audioContextRef.current;
+      if (audioContext && audioContext.state !== "closed") {
+        void audioContext.close().catch(() => {
+          // Hot reload or another cleanup may close it first.
+        });
+      }
     };
   }, []);
 
@@ -236,35 +225,35 @@ export function MultiTrackPlanner({
     [copy, error],
   );
   const canScore = tracks.length > 0 && !isAnalyzing;
-  const canGenerate =
-    candidateGroups !== null &&
-    candidateGroups.length > 0 &&
-    candidateGroups.every((group) => group.topCandidates.length > 0) &&
-    !isPlanning &&
-    !isApplyingPlan;
   const hasTracks = tracks.length > 0;
-  const hasCandidates = candidateGroups !== null;
+  const scoredCandidateGroups = useMemo<CandidateGroup[]>(
+    () =>
+      hasTracks
+        ? getTopCandidatesBySegment(
+            tracks,
+            selectedPlan,
+            MAX_CANDIDATES_PER_SEGMENT,
+          )
+        : [],
+    [hasTracks, selectedPlan, tracks],
+  );
   const missingCandidateCount =
-    candidateGroups?.filter((group) => group.topCandidates.length === 0).length ?? 0;
+    scoredCandidateGroups.filter((group) => group.topCandidates.length === 0)
+      .length;
   const coverageReport = useMemo(
     () =>
-      candidateGroups
+      hasTracks
         ? analyzeLibraryCoverage({
             runningPlan: selectedPlan,
             tracks,
-            candidateGroups,
+            candidateGroups: scoredCandidateGroups,
           })
         : null,
-    [candidateGroups, selectedPlan, tracks],
+    [hasTracks, scoredCandidateGroups, selectedPlan, tracks],
   );
+  const hasCandidates = candidateGroups !== null;
   const hasSelection = selectionPlan !== null;
   const hasExecutable = executablePlan !== null;
-  const plannerRunState = getPlannerRunState({
-    error,
-    hasSelection,
-    isPlanning: isPlanning || isApplyingPlan,
-  });
-  const plannerStatusCopy = copy.actions.plannerStates[plannerRunState];
   const flowSteps = useMemo(
     () =>
       getMultiTrackFlowSteps({
@@ -275,43 +264,46 @@ export function MultiTrackPlanner({
         isPlanning: isPlanning || isApplyingPlan,
         copy,
         statusCopy,
-      }),
+      }).map((step) =>
+        step.number === currentStep
+          ? { ...step, status: statusCopy.current }
+          : step,
+      ),
     [
       copy,
+      currentStep,
       hasCandidates,
       hasExecutable,
       hasSelection,
       hasTracks,
-      isPlanning,
       isApplyingPlan,
+      isPlanning,
       statusCopy,
     ],
   );
-  const isStepUnlocked = (stepNumber: number) => {
-    const step = flowSteps.find((item) => item.number === stepNumber);
-    return step ? step.state !== "locked" : false;
-  };
   const goToStep = (stepNumber: number) => {
-    if (
-      stepNumber >= 1 &&
-      stepNumber <= flowSteps.length &&
-      isStepUnlocked(stepNumber)
-    ) {
+    const step = flowSteps.find((item) => item.number === stepNumber);
+
+    if (step && step.state !== "locked") {
       setCurrentStep(stepNumber);
     }
   };
   const canGoBack = currentStep > 1;
-  const canGoNext = getCanGoNext({
-    currentStep,
-    hasTracks,
-    hasCandidates,
-    hasSelection,
-    hasExecutable,
-    isAnalyzing,
-    isPlanning: isPlanning || isApplyingPlan,
-    canScore,
-    canGenerate,
-  });
+  const canGoNext =
+    currentStep === 1
+      ? hasTracks && !isAnalyzing
+      : currentStep === 2
+        ? hasTracks && !isAnalyzing
+        : currentStep === 3
+        ? hasTracks &&
+          canScore &&
+          scoredCandidateGroups.length > 0 &&
+          missingCandidateCount === 0 &&
+          !isPlanning &&
+          !isApplyingPlan
+        : currentStep === 4
+          ? hasExecutable && !isApplyingPlan
+        : false;
   const stepHint =
     copy.stepHints[currentStep as keyof MultiTrackCopy["stepHints"]] ??
     copy.stepHints[1];
@@ -348,7 +340,6 @@ export function MultiTrackPlanner({
     setPlannerResultSource(null);
     setPlanVariants([]);
     setActiveVariantId("balanced");
-    setLockedSelectionKeys(new Set());
     resetRenderedOutput();
   };
 
@@ -383,7 +374,6 @@ export function MultiTrackPlanner({
 
   const handleFilesSelect = async (
     files: FileList | null,
-    sourceKind: TrackSourceKind,
   ) => {
     const supportedFiles = getSupportedAudioFiles(Array.from(files ?? []));
 
@@ -394,9 +384,8 @@ export function MultiTrackPlanner({
 
     const existingImportKeys = new Set(tracks.map((track) => track.importKey));
     let duplicateCount = 0;
-    let invalidNameCount = 0;
     const importEntries = supportedFiles.flatMap((file) => {
-      const importKey = createTrackImportKey(file, sourceKind);
+      const importKey = createTrackImportKey(file, "raw");
 
       if (existingImportKeys.has(importKey)) {
         duplicateCount += 1;
@@ -413,13 +402,9 @@ export function MultiTrackPlanner({
         added: 0,
         total: tracks.length,
         duplicates: duplicateCount,
-        invalidNames: invalidNameCount,
+        invalidNames: 0,
       });
-      setError(
-        invalidNameCount > 0
-          ? { kind: "invalidStandardizedNames", count: invalidNameCount }
-          : null,
-      );
+      setError(null);
       return;
     }
 
@@ -451,20 +436,9 @@ export function MultiTrackPlanner({
         });
 
         try {
-          const embeddedMetadata =
-            sourceKind === "standardized"
-              ? await readRunTempoWavMetadata(file)
-              : null;
-          const embeddedCadenceBpm =
-            sourceKind === "standardized"
-              ? embeddedMetadata?.cadenceBpm ??
-                parseStandardizedTrackCadence(file.name)
-              : null;
-
-          if (sourceKind === "standardized" && embeddedCadenceBpm === null) {
-            invalidNameCount += 1;
-            continue;
-          }
+          const embeddedMetadata = await readRunTempoWavMetadata(file);
+          const embeddedCadenceBpm = embeddedMetadata?.cadenceBpm ?? null;
+          const sourceKind: TrackSourceKind = embeddedMetadata ? "standardized" : "raw";
 
           const decoded = await withTimeout(
             decodeAudioFile(file, audioContext),
@@ -475,10 +449,18 @@ export function MultiTrackPlanner({
           await new Promise((resolve) => window.requestAnimationFrame(resolve));
 
           const detectedBpm =
-            sourceKind === "standardized"
+            embeddedCadenceBpm !== null
               ? embeddedCadenceBpm
               : await detectPlanningBpm(decoded.audioBuffer);
+          const clickDetection =
+            embeddedMetadata
+              ? { status: "confirmed" as const, confidence: 1 }
+              : detectEmbeddedClick(decoded.audioBuffer, detectedBpm);
           const trackId = createTrackId(file, sourceKind, index);
+          const rawEnergyFeatures =
+            embeddedMetadata?.rawEnergyFeatures ??
+            extractRawEnergyFeatures(decoded.audioBuffer);
+          const mood = await analyzeMood(decoded.audioBuffer, rawEnergyFeatures);
 
           nextTrackFileMap[trackId] = file;
 
@@ -488,22 +470,25 @@ export function MultiTrackPlanner({
             fileName: decoded.fileName,
             relativePath: relativePath === file.name ? null : relativePath,
             sourceKind,
+            embeddedClickStatus: clickDetection.status,
+            embeddedClickConfidence: clickDetection.confidence,
             embeddedCadenceBpm,
             durationSec: decoded.durationSec,
             detectedBpm,
             bpmCandidates:
-              sourceKind === "standardized" && embeddedCadenceBpm !== null
+              embeddedCadenceBpm !== null
                 ? createStandardizedBpmCandidates(embeddedCadenceBpm)
                 : createPlanningBpmCandidates(detectedBpm),
-            beatConfidence: sourceKind === "standardized" ? 1 : null,
-            tempoStability: sourceKind === "standardized" ? 1 : null,
-            rawEnergyFeatures:
-              embeddedMetadata?.rawEnergyFeatures ??
-              extractRawEnergyFeatures(decoded.audioBuffer),
+            beatConfidence: embeddedCadenceBpm !== null ? 1 : null,
+            tempoStability: embeddedCadenceBpm !== null ? 1 : null,
+            rawEnergyFeatures,
             energyFeatureSource: embeddedMetadata?.rawEnergyFeatures
               ? "embedded"
               : "analyzed",
             normalizedEnergyScore: null,
+            musicalKey: analyzeMusicalKey(decoded.audioBuffer),
+            mood,
+            energyStructure: extractEnergyStructure(decoded.audioBuffer),
           });
         } catch {
           failures += 1;
@@ -518,16 +503,11 @@ export function MultiTrackPlanner({
         added: importedTracks.length,
         total: nextTracks.length,
         duplicates: duplicateCount,
-        invalidNames: invalidNameCount,
+        invalidNames: 0,
       });
 
       if (failures > 0) {
         setError({ kind: "decodeFailures", count: failures });
-      } else if (invalidNameCount > 0) {
-        setError({
-          kind: "invalidStandardizedNames",
-          count: invalidNameCount,
-        });
       }
 
       if (importedTracks.length === 0 && tracks.length === 0) {
@@ -563,28 +543,39 @@ export function MultiTrackPlanner({
     resetPlanningOutput();
   };
 
+  const handleEmbeddedClickChange = (trackId: string, isConfirmed: boolean) => {
+    setTracks((current) =>
+      current.map((track) =>
+        track.trackId === trackId
+          ? {
+              ...track,
+              embeddedClickStatus: isConfirmed ? "confirmed" : "not_detected",
+              embeddedClickConfidence: isConfirmed ? 1 : 0,
+            }
+          : track,
+      ),
+    );
+    resetPlanningOutput();
+  };
+
   const handlePlanChange = (settings: RunningPlanSettings) => {
     setPlanSettings(settings);
     resetPlanningOutput();
   };
 
-  const handleScoreCandidates = (): boolean => {
+  const handleScoreCandidates = (): CandidateGroup[] | null => {
     if (!canScore) {
-      return false;
+      return null;
     }
 
-    const nextCandidateGroups = getTopCandidatesBySegment(
-      tracks,
-      selectedPlan,
-      MAX_CANDIDATES_PER_SEGMENT,
-    );
+    const nextCandidateGroups = scoredCandidateGroups;
 
     setCandidateGroups(nextCandidateGroups);
     setSelectionPlan(null);
     setExecutablePlan(null);
     resetRenderedOutput();
 
-    return true;
+    return nextCandidateGroups;
   };
 
   const buildLoadedExecutablePlan = async (
@@ -653,8 +644,17 @@ export function MultiTrackPlanner({
     }
   };
 
-  const handleGenerateMixPlan = async (): Promise<boolean> => {
-    if (!candidateGroups || !canGenerate) {
+  const handleGenerateMixPlan = async (
+    planningGroups: CandidateGroup[] | null = candidateGroups,
+  ): Promise<boolean> => {
+    const canGeneratePlan =
+      planningGroups !== null &&
+      planningGroups.length > 0 &&
+      planningGroups.every((group) => group.topCandidates.length > 0) &&
+      !isPlanning &&
+      !isApplyingPlan;
+
+    if (!planningGroups || !canGeneratePlan) {
       return false;
     }
 
@@ -665,14 +665,14 @@ export function MultiTrackPlanner({
       const plannerInput = {
         runningPlan: selectedPlan,
         tracks,
-        topCandidatesBySegment: candidateGroups,
+        topCandidatesBySegment: planningGroups,
         rules: {
           allowTrackReuse: true,
           allowLoop: true,
-          maxTracksPerSegment: sequenceRules.maxTracksPerSegment,
+          maxTracksPerSegment: DEFAULT_SEQUENCE_RULES.maxTracksPerSegment,
           preferStableCadenceGrid: true,
-          minRepeatGapTracks: sequenceRules.minRepeatGapTracks,
-          preferFolderVariety: sequenceRules.preferFolderVariety,
+          minRepeatGapTracks: DEFAULT_SEQUENCE_RULES.minRepeatGapTracks,
+          preferFolderVariety: DEFAULT_SEQUENCE_RULES.preferFolderVariety,
         },
       };
       let nextSelectionPlan: OpenAISelectionPlan;
@@ -699,15 +699,15 @@ export function MultiTrackPlanner({
           nextSelectionPlan = await new MockMixPlannerClient().createSelectionPlan(
             plannerInput,
           );
-          nextPlannerSource = "local-fallback";
+          nextPlannerSource = "local";
         }
       }
 
       const nextVariants = createMixPlanVariants({
         runningPlan: selectedPlan,
         tracks,
-        candidateGroups,
-        rules: sequenceRules,
+        candidateGroups: planningGroups,
+        rules: DEFAULT_SEQUENCE_RULES,
         preferredSelectionPlan: nextSelectionPlan,
       });
       const balancedVariant =
@@ -722,9 +722,12 @@ export function MultiTrackPlanner({
         balancedVariant.selectionPlan,
       );
 
+      if (loaded.executablePlan.blocks.length === 0) {
+        throw new Error(copy.actions.planningError);
+      }
+
       setPlanVariants(nextVariants);
       setActiveVariantId(balancedVariant.variantId);
-      setLockedSelectionKeys(new Set());
       setSelectionPlan(balancedVariant.selectionPlan);
       setExecutablePlan(loaded.executablePlan);
       setSelectedTrackAudioMap(loaded.trackAudioMap);
@@ -745,17 +748,6 @@ export function MultiTrackPlanner({
     }
   };
 
-  const handleSequenceRulesChange = (rules: GlobalSequenceRules) => {
-    setSequenceRules(rules);
-    setPlanVariants([]);
-    setSelectionPlan(null);
-    setExecutablePlan(null);
-    setSelectedTrackAudioMap({});
-    setLockedSelectionKeys(new Set());
-    setPlannerResultSource(null);
-    resetRenderedOutput();
-  };
-
   const handleSelectVariant = async (variantId: MixPlanStrategy) => {
     const variant = planVariants.find((item) => item.variantId === variantId);
 
@@ -763,53 +755,8 @@ export function MultiTrackPlanner({
       return;
     }
 
-    const nextSelectionPlan = selectionPlan
-      ? mergeLockedSelections({
-          targetPlan: variant.selectionPlan,
-          currentPlan: selectionPlan,
-          lockedSelectionKeys,
-        })
-      : variant.selectionPlan;
-
     setActiveVariantId(variantId);
-    await applySelectionPlan(nextSelectionPlan, variantId);
-  };
-
-  const handleToggleSelectionLock = (segmentId: string, trackId: string) => {
-    const key = getLockedSelectionKey(segmentId, trackId);
-    setLockedSelectionKeys((current) => {
-      const next = new Set(current);
-
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-
-      return next;
-    });
-  };
-
-  const handleReplaceSelection = async (
-    segmentId: string,
-    index: number,
-    trackId: string,
-  ) => {
-    if (!selectionPlan) {
-      return;
-    }
-
-    const candidate = candidateGroups
-      ?.find((group) => group.segmentId === segmentId)
-      ?.topCandidates.find((item) => item.trackId === trackId);
-
-    if (!candidate) {
-      return;
-    }
-
-    await applySelectionPlan(
-      replaceSelection(selectionPlan, segmentId, index, candidate),
-    );
+    await applySelectionPlan(variant.selectionPlan, variantId);
   };
 
   const handleMoveSelection = async (
@@ -837,24 +784,27 @@ export function MultiTrackPlanner({
     }
 
     if (currentStep === 2) {
-      if (!candidateGroups && !handleScoreCandidates()) {
-        return;
-      }
-
       setCurrentStep(3);
       return;
     }
 
     if (currentStep === 3) {
-      if (selectionPlan && executablePlan) {
-        setCurrentStep(4);
+      const planningGroups = candidateGroups ?? handleScoreCandidates();
+      const missingCount =
+        planningGroups?.filter((group) => group.topCandidates.length === 0)
+          .length ?? 0;
+
+      if (missingCount > 0) {
+        setError({
+          kind: "planning",
+          message: copy.candidates.coverageMissing(missingCount),
+        });
         return;
       }
 
-      if (await handleGenerateMixPlan()) {
+      if (await handleGenerateMixPlan(planningGroups)) {
         setCurrentStep(4);
       }
-
       return;
     }
 
@@ -956,9 +906,9 @@ export function MultiTrackPlanner({
             <p className="stage-hint">{stepHint.hint}</p>
           </div>
 
-        <div className="stage-panel multi-stage-panel">
-          {currentStep === 1 ? (
-            <>
+          <div className="stage-panel multi-stage-panel">
+            {currentStep === 1 ? (
+              <>
               <section
                 className="panel planner-panel upload-panel multi-library-panel"
                 aria-labelledby="multi-upload-title"
@@ -971,145 +921,62 @@ export function MultiTrackPlanner({
                   <FileAudio aria-hidden="true" />
                 </div>
 
-                <div
-                  className="source-tabs"
-                  role="tablist"
-                  aria-label={copy.upload.sourceAria}
-                >
-                  <button
-                    id="standardized-library-tab"
-                    type="button"
-                    role="tab"
-                    aria-selected={activeImportSource === "standardized"}
-                    aria-controls="standardized-library-panel"
-                    className={
-                      activeImportSource === "standardized" ? "active" : ""
-                    }
-                    onClick={() => setActiveImportSource("standardized")}
-                  >
-                    <span className="source-tab-icon local" aria-hidden="true">
-                      <FolderOpen size={19} />
+                <div className="source-workspace multi-library-source-workspace">
+                  <div className="source-method-intro">
+                    <div>
+                      <span className="source-method-kicker">
+                        {copy.upload.standardizedKicker}
+                      </span>
+                      <h3>{copy.upload.standardizedTitle}</h3>
+                      <p>{copy.upload.standardizedHint}</p>
+                    </div>
+                  </div>
+                  <label className="drop-zone compact-drop-zone multi-drop-zone">
+                    <input
+                      {...DIRECTORY_INPUT_PROPS}
+                      type="file"
+                      multiple
+                      accept="audio/*,.mp3,.wav,.m4a,.aac"
+                      disabled={isAnalyzing}
+                      onChange={(event) => {
+                        void handleFilesSelect(event.target.files);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    <span className="drop-icon">
+                      <FolderOpen size={24} aria-hidden="true" />
                     </span>
-                    <span>
-                      <strong className="source-tab-title-row">
-                        {copy.upload.standardizedTab}
-                        <span className="source-tab-recommendation">
-                          {copy.upload.standardizedKicker}
-                        </span>
+                    <span className="drop-copy">
+                      <strong>
+                        {isAnalyzing
+                          ? copy.upload.analyzingAudio
+                          : copy.upload.chooseFolder}
                       </strong>
-                      <small>{copy.upload.standardizedTabHint}</small>
+                      <small>{copy.upload.standardizedFileRule}</small>
                     </span>
-                  </button>
-                  <button
-                    id="raw-library-tab"
-                    type="button"
-                    role="tab"
-                    aria-selected={activeImportSource === "raw"}
-                    aria-controls="raw-library-panel"
-                    className={activeImportSource === "raw" ? "active" : ""}
-                    onClick={() => setActiveImportSource("raw")}
-                  >
-                    <span className="source-tab-icon local" aria-hidden="true">
-                      <HardDrive size={19} />
-                    </span>
-                    <span>
-                      <strong>{copy.upload.rawTab}</strong>
-                      <small>{copy.upload.rawTabHint}</small>
-                    </span>
-                  </button>
+                  </label>
+                  <div className="format-row" aria-label={copy.upload.formatsAria}>
+                    <span>MP3</span>
+                    <span>WAV</span>
+                    <span>M4A</span>
+                    <span>AAC</span>
+                  </div>
                 </div>
-
-                {activeImportSource === "standardized" ? (
-                  <div
-                    id="standardized-library-panel"
-                    className="source-workspace multi-library-source-workspace"
-                    role="tabpanel"
-                    aria-labelledby="standardized-library-tab"
-                  >
-                    <div className="source-method-intro">
-                      <div>
-                        <span className="source-method-kicker">
-                          {copy.upload.standardizedKicker}
-                        </span>
-                        <h3>{copy.upload.standardizedTitle}</h3>
-                        <p>{copy.upload.standardizedHint}</p>
-                      </div>
-                    </div>
-                    <label className="drop-zone compact-drop-zone multi-drop-zone">
-                      <input
-                        {...DIRECTORY_INPUT_PROPS}
-                        type="file"
-                        multiple
-                        accept="audio/*,.mp3,.wav,.m4a,.aac"
-                        disabled={isAnalyzing}
-                        onChange={(event) => {
-                          void handleFilesSelect(
-                            event.target.files,
-                            "standardized",
-                          );
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                      <span className="drop-icon">
-                        <FolderOpen size={24} aria-hidden="true" />
-                      </span>
-                      <span className="drop-copy">
-                        <strong>
-                          {isAnalyzing
-                            ? copy.upload.analyzingAudio
-                            : copy.upload.chooseFolder}
-                        </strong>
-                        <small>{copy.upload.standardizedFileRule}</small>
-                      </span>
-                    </label>
-                  </div>
-                ) : (
-                  <div
-                    id="raw-library-panel"
-                    className="source-workspace multi-library-source-workspace"
-                    role="tabpanel"
-                    aria-labelledby="raw-library-tab"
-                  >
-                    <div className="source-method-intro">
-                      <div>
-                        <span className="source-method-kicker">
-                          {copy.upload.rawKicker}
-                        </span>
-                        <h3>{copy.upload.rawTitle}</h3>
-                        <p>{copy.upload.rawHint}</p>
-                      </div>
-                    </div>
-                    <label className="drop-zone compact-drop-zone multi-drop-zone">
-                      <input
-                        type="file"
-                        multiple
-                        accept="audio/*,.mp3,.wav,.m4a,.aac"
-                        disabled={isAnalyzing}
-                        onChange={(event) => {
-                          void handleFilesSelect(event.target.files, "raw");
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                      <span className="drop-icon">
-                        <Upload size={24} aria-hidden="true" />
-                      </span>
-                      <span className="drop-copy">
-                        <strong>{copy.upload.chooseFiles}</strong>
-                        <small>{copy.upload.rawFileHint}</small>
-                      </span>
-                    </label>
-                    <div className="format-row" aria-label={copy.upload.formatsAria}>
-                      <span>MP3</span>
-                      <span>WAV</span>
-                      <span>M4A</span>
-                      <span>AAC</span>
-                    </div>
-                  </div>
-                )}
 
                 <div className="multi-library-footer">
                   <div className="library-import-footer">
-                    <p className="field-hint">{copy.upload.hint}</p>
+                    {tracks.length > 0 ? (
+                      <dl className="multi-library-compact-summary">
+                        <div>
+                          <dt>{copy.upload.librarySummary.total}</dt>
+                          <dd>{libraryStats.total}</dd>
+                        </div>
+                        <div>
+                          <dt>{copy.upload.librarySummary.cadenceRange}</dt>
+                          <dd>{libraryStats.cadenceRange}</dd>
+                        </div>
+                      </dl>
+                    ) : null}
                     {tracks.length > 0 ? (
                       <button
                         type="button"
@@ -1128,297 +995,116 @@ export function MultiTrackPlanner({
                   ) : null}
                   {errorText ? <p className="error-text">{errorText}</p> : null}
                 </div>
+              </section>
+              </>
+            ) : null}
 
+            {currentStep === 2 ? (
+              <>
                 {tracks.length > 0 ? (
-                  <dl className="summary-grid multi-library-summary">
-                    <div><dt>{copy.upload.librarySummary.total}</dt><dd>{libraryStats.total}</dd></div>
-                    <div><dt>{copy.upload.librarySummary.finished}</dt><dd>{libraryStats.finished}</dd></div>
-                    <div><dt>{copy.upload.librarySummary.raw}</dt><dd>{libraryStats.raw}</dd></div>
-                    <div><dt>{copy.upload.librarySummary.cadenceRange}</dt><dd>{libraryStats.cadenceRange}</dd></div>
-                    <div><dt>{copy.upload.librarySummary.memory}</dt><dd>{copy.upload.librarySummary.onDemand}</dd></div>
-                  </dl>
+                  <TrackFeatureTable
+                    tracks={tracks}
+                    copy={copy.tracks}
+                    onRemove={handleRemoveTrack}
+                    onEmbeddedClickChange={handleEmbeddedClickChange}
+                  />
                 ) : null}
-              </section>
-
-              {tracks.length > 0 ? (
-                <TrackFeatureTable
-                  tracks={tracks}
-                  copy={copy.tracks}
-                  onRemove={handleRemoveTrack}
-                />
-              ) : null}
-            </>
-          ) : null}
-
-          {currentStep === 2 ? (
-            <RunningPlanSelector
-              plan={selectedPlan}
-              settings={planSettings}
-              copy={copy.runningPlan}
-              onChange={handlePlanChange}
-            />
-          ) : null}
-
-          {currentStep === 3 && candidateGroups ? (
-            <>
-              {coverageReport ? (
-                <LibraryCoveragePanel
-                  report={coverageReport}
-                  copy={copy.coverage}
-                />
-              ) : null}
-              <section
-                className="panel planner-panel planner-mode-panel"
-                aria-labelledby="planner-mode-title"
-              >
-                <div className="panel-heading">
-                  <div>
-                    <span className="eyebrow">{copy.actions.eyebrow}</span>
-                    <h2 id="planner-mode-title">{copy.actions.title}</h2>
-                  </div>
-                  <Bot aria-hidden="true" />
-                </div>
-
-                <div
-                  className={`planner-service-status ${plannerRunState}`}
-                  aria-live="polite"
-                  aria-busy={isPlanning}
-                >
-                  <span className="planner-service-icon" aria-hidden="true">
-                    {plannerRunState === "running" ? (
-                      <LoaderCircle size={22} />
-                    ) : plannerRunState === "complete" ? (
-                      <CheckCircle2 size={22} />
-                    ) : plannerRunState === "failed" ? (
-                      <CircleAlert size={22} />
-                    ) : (
-                      <Bot size={22} />
-                    )}
-                  </span>
-                  <div className="planner-service-copy">
-                    <span>{copy.actions.plannerModeLabel}</span>
-                    <strong>
-                      {plannerResultSource === "gpt"
-                        ? copy.actions.plannerResult.gpt
-                        : plannerResultSource === "local"
-                          ? copy.actions.plannerResult.local
-                          : plannerResultSource === "local-fallback"
-                            ? copy.actions.plannerResult.localFallback
-                            : plannerEngine === "local"
-                              ? copy.actions.localPlanner
-                              : plannerStatusCopy.title}
-                    </strong>
-                    <p>
-                      {plannerEngine === "auto"
-                        ? copy.actions.autoPlannerHint
-                        : plannerEngine === "local"
-                          ? copy.actions.localPlannerHint
-                          : copy.actions.openaiPlannerHint}
-                    </p>
-                  </div>
-                </div>
-                <div className="planner-engine-grid" role="radiogroup" aria-label={copy.actions.plannerModeLabel}>
-                  {(["auto", "gpt", "local"] as const).map((engine) => (
-                    <button
-                      key={engine}
-                      type="button"
-                      role="radio"
-                      aria-checked={plannerEngine === engine}
-                      className={plannerEngine === engine ? "active" : ""}
-                      disabled={isPlanning}
-                      onClick={() => {
-                        setPlannerEngine(engine);
-                        setPlannerResultSource(null);
-                        setSelectionPlan(null);
-                        setExecutablePlan(null);
-                        setSelectedTrackAudioMap({});
-                        resetRenderedOutput();
-                      }}
-                    >
-                      {engine === "auto"
-                        ? copy.actions.autoPlanner
-                        : engine === "gpt"
-                          ? copy.actions.openaiPlanner
-                          : copy.actions.localPlanner}
-                    </button>
-                  ))}
-                </div>
-                <div className="sequence-rule-panel" aria-labelledby="sequence-rules-title">
-                  <div className="sequence-rule-heading">
-                    <strong id="sequence-rules-title">{copy.actions.sequenceRules.title}</strong>
-                    <small>{copy.actions.sequenceRules.hint}</small>
-                  </div>
-                  <label className="sequence-rule-field">
-                    <span>{copy.actions.sequenceRules.repeatGap}</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="8"
-                      step="1"
-                      value={sequenceRules.minRepeatGapTracks}
-                      disabled={isPlanning}
-                      onChange={(event) =>
-                        handleSequenceRulesChange({
-                          ...sequenceRules,
-                          minRepeatGapTracks: Number(event.target.value),
-                        })
-                      }
-                    />
-                    <output>{copy.actions.sequenceRules.tracks(sequenceRules.minRepeatGapTracks)}</output>
-                  </label>
-                  <label className="sequence-rule-field">
-                    <span>{copy.actions.sequenceRules.segmentTracks}</span>
-                    <input
-                      type="range"
-                      min="1"
-                      max="6"
-                      step="1"
-                      value={sequenceRules.maxTracksPerSegment}
-                      disabled={isPlanning}
-                      onChange={(event) =>
-                        handleSequenceRulesChange({
-                          ...sequenceRules,
-                          maxTracksPerSegment: Number(event.target.value),
-                        })
-                      }
-                    />
-                    <output>{sequenceRules.maxTracksPerSegment}</output>
-                  </label>
-                  <label className="sequence-rule-toggle">
-                    <input
-                      type="checkbox"
-                      checked={sequenceRules.preferFolderVariety}
-                      disabled={isPlanning}
-                      onChange={(event) =>
-                        handleSequenceRulesChange({
-                          ...sequenceRules,
-                          preferFolderVariety: event.target.checked,
-                        })
-                      }
-                    />
-                    <span>
-                      <strong>{copy.actions.sequenceRules.folderVariety}</strong>
-                      <small>{copy.actions.sequenceRules.folderVarietyHint}</small>
-                    </span>
-                  </label>
-                </div>
-                <p className={`candidate-coverage ${missingCandidateCount > 0 ? "warning" : "ready"}`}>
-                  {missingCandidateCount > 0
-                    ? copy.candidates.coverageMissing(missingCandidateCount)
-                    : copy.candidates.coverageReady}
-                </p>
                 {errorText ? <p className="error-text">{errorText}</p> : null}
-              </section>
+              </>
+            ) : null}
 
-              <CandidateScoreTable
-                runningPlan={selectedPlan}
-                tracks={tracks}
-                candidateGroups={candidateGroups}
-                copy={copy.candidates}
-                segmentNames={copy.runningPlan.segmentNames}
-              />
-            </>
-          ) : null}
+            {currentStep === 3 ? (
+              <>
+                <RunningPlanSelector
+                  plan={selectedPlan}
+                  settings={planSettings}
+                  copy={copy.runningPlan}
+                  coverageReport={coverageReport}
+                  coverageCopy={copy.coverage}
+                  onChange={handlePlanChange}
+                />
+                {errorText ? <p className="error-text">{errorText}</p> : null}
+              </>
+            ) : null}
 
-          {currentStep === 4 && executablePlan ? (
-            <>
-              {planVariants.length > 0 ? (
-                <PlanVariantPicker
-                  variants={planVariants}
-                  activeVariantId={activeVariantId}
-                  isBusy={isApplyingPlan || isPlanning}
-                  copy={copy.variants}
-                  onSelect={(variantId) => {
-                    void handleSelectVariant(variantId);
-                  }}
-                />
-              ) : null}
-              {selectionPlan && candidateGroups ? (
-                <MixPlanEditor
-                  runningPlan={selectedPlan}
-                  selectionPlan={selectionPlan}
-                  tracks={tracks}
-                  candidateGroups={candidateGroups}
-                  lockedSelectionKeys={lockedSelectionKeys}
-                  isBusy={isApplyingPlan || isPlanning}
-                  copy={copy.editor}
-                  segmentNames={copy.runningPlan.segmentNames}
-                  onToggleLock={handleToggleSelectionLock}
-                  onReplace={(segmentId, index, trackId) => {
-                    void handleReplaceSelection(segmentId, index, trackId);
-                  }}
-                  onMove={(segmentId, fromIndex, toIndex) => {
-                    void handleMoveSelection(segmentId, fromIndex, toIndex);
-                  }}
-                />
-              ) : null}
-              <MixTrackListView
-                runningPlan={selectedPlan}
+            {currentStep === 4 && candidateGroups ? (
+              <div className="step-four-workspace">
+                {planVariants.length > 0 && plannerResultSource ? (
+                  <PlanVariantPicker
+                    variants={planVariants}
+                    activeVariantId={activeVariantId}
+                    isBusy={isApplyingPlan || isPlanning}
+                    source={plannerResultSource}
+                    copy={copy.variants}
+                    onSelect={(variantId) => {
+                      void handleSelectVariant(variantId);
+                    }}
+                  />
+                ) : null}
+                {selectionPlan && candidateGroups ? (
+                  <MixPlanEditor
+                    runningPlan={selectedPlan}
+                    selectionPlan={selectionPlan}
+                    tracks={tracks}
+                    candidateGroups={candidateGroups}
+                    isBusy={isApplyingPlan || isPlanning}
+                    copy={copy.editor}
+                    analysisCopy={copy.candidates}
+                    segmentNames={copy.runningPlan.segmentNames}
+                    onMove={(segmentId, fromIndex, toIndex) => {
+                      void handleMoveSelection(segmentId, fromIndex, toIndex);
+                    }}
+                  />
+                ) : null}
+                {errorText ? <p className="error-text">{errorText}</p> : null}
+              </div>
+            ) : null}
+
+            {currentStep === 5 && executablePlan ? (
+              <ExecutableMixPlanView
                 tracks={tracks}
                 executablePlan={executablePlan}
-                planTitle={localizedPlanTitle}
-                copy={copy.selection}
-                segmentNames={copy.runningPlan.segmentNames}
-                interpretations={copy.candidates.interpretations}
+                copy={copy.executable}
+                isRendering={isRendering}
+                renderedDurationSec={renderedMixBuffer?.duration ?? null}
+                renderError={renderError}
+                onRenderPreview={() => void handleRenderMixPreview()}
+                onExportWav={() => void handleExportMixWav()}
               />
-              <MultiTrackClickPanel
-                settings={clickSettings}
-                copy={copy.click}
-                generatedClickBlockCount={executablePlan.blocks.filter(
-                  (block) => block.metronome.enabled,
-                ).length}
-                embeddedClickBlockCount={executablePlan.blocks.filter(
-                  (block) => !block.metronome.enabled,
-                ).length}
-                onChange={handleClickSettingsChange}
-              />
-            </>
-          ) : null}
+            ) : null}
+          </div>
 
-          {currentStep === 5 && executablePlan ? (
-            <ExecutableMixPlanView
-              tracks={tracks}
-              executablePlan={executablePlan}
-              mixTitle={executablePlan.mixTitle}
-              copy={copy.executable}
-              isRendering={isRendering}
-              renderedDurationSec={renderedMixBuffer?.duration ?? null}
-              renderError={renderError}
-              onRenderPreview={() => void handleRenderMixPreview()}
-              onExportWav={() => void handleExportMixWav()}
-            />
-          ) : null}
-        </div>
-
-        <nav className="stage-nav" aria-label={navCopy.ariaLabel}>
-          <button
-            type="button"
-            className="secondary-action"
-            disabled={!canGoBack}
-            onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-            {navCopy.back}
-          </button>
-          <span className="stage-progress">
-            {currentStep} / {flowSteps.length}
-          </span>
-          <button
-            type="button"
-            className="primary-action"
-            disabled={!canGoNext}
-            onClick={() => {
-              void handleNext();
-            }}
-          >
-            {currentStep === 3 && isPlanning
-              ? copy.actions.generating
-              : currentStep === 3
-                ? copy.actions.generateMixPlan
-                : navCopy.next}
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
-        </nav>
+          <nav className="stage-nav" aria-label={navCopy.ariaLabel}>
+            <button
+              type="button"
+              className="secondary-action"
+              disabled={!canGoBack}
+              onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
+            >
+              <ChevronLeft size={18} aria-hidden="true" />
+              {navCopy.back}
+            </button>
+            <span className="stage-progress">
+              {currentStep} / {flowSteps.length}
+            </span>
+            {currentStep < 5 ? (
+              <button
+                type="button"
+                className="primary-action"
+                disabled={!canGoNext}
+                onClick={() => {
+                  void handleNext();
+                }}
+              >
+                {currentStep === 3 && isPlanning
+                  ? copy.actions.generating
+                  : currentStep === 3
+                    ? copy.actions.generateMixPlan
+                    : navCopy.next}
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            ) : null}
+          </nav>
         </div>
       </div>
     </article>
@@ -1716,46 +1402,44 @@ function getMultiTrackFlowSteps({
     },
     {
       number: 2,
+      label: copy.flow.labels.confirmTracks,
+      status: hasTracks ? statusCopy.ready : statusCopy.locked,
+      state: hasTracks ? "ready" : "locked",
+    },
+    {
+      number: 3,
       label: copy.flow.labels.buildPlan,
       status: hasCandidates
         ? statusCopy.done
         : hasTracks
-          ? statusCopy.current
-          : statusCopy.locked,
-      state: hasCandidates ? "complete" : hasTracks ? "current" : "locked",
-    },
-    {
-      number: 3,
-      label: copy.flow.labels.reviewCandidates,
-      status: hasSelection
-        ? statusCopy.done
-        : hasCandidates
           ? statusCopy.ready
           : statusCopy.locked,
-      state: hasSelection ? "complete" : hasCandidates ? "ready" : "locked",
+      state: hasCandidates ? "complete" : hasTracks ? "ready" : "locked",
     },
     {
       number: 4,
       label: copy.flow.labels.reviewPlan,
-      status: hasExecutable
-        ? statusCopy.ready
-        : isPlanning
-          ? statusCopy.current
-          : hasSelection
-            ? statusCopy.ready
-            : statusCopy.locked,
-      state: hasExecutable
-        ? "ready"
-        : isPlanning
-          ? "current"
-          : hasSelection
-            ? "ready"
-            : "locked",
+      status: hasSelection
+        ? statusCopy.done
+        : hasCandidates
+          ? isPlanning
+            ? statusCopy.current
+            : statusCopy.ready
+          : statusCopy.locked,
+      state: hasSelection
+        ? "complete"
+        : hasCandidates
+          ? isPlanning
+            ? "current"
+            : "ready"
+          : "locked",
     },
     {
       number: 5,
       label: copy.flow.labels.export,
-      status: hasExecutable ? statusCopy.ready : statusCopy.locked,
+      status: hasExecutable
+        ? statusCopy.ready
+        : statusCopy.locked,
       state: hasExecutable ? "ready" : "locked",
     },
   ];
@@ -1787,15 +1471,15 @@ function getCanGoNext({
   }
 
   if (currentStep === 2) {
-    return hasTracks && (hasCandidates || canScore);
+    return hasTracks && !isAnalyzing;
   }
 
   if (currentStep === 3) {
-    return hasCandidates && !isPlanning && (hasSelection || canGenerate);
+    return hasTracks && canScore && !isPlanning && canGenerate;
   }
 
   if (currentStep === 4) {
-    return hasExecutable;
+    return hasExecutable && !isPlanning && hasSelection;
   }
 
   return false;
@@ -1821,10 +1505,6 @@ function formatPlannerError(
     return copy.upload.noAudioFiles;
   }
 
-  if (error.kind === "invalidStandardizedNames") {
-    return copy.upload.invalidStandardizedNames(error.count);
-  }
-
   return error.message ?? copy.actions.planningError;
 }
 
@@ -1840,10 +1520,15 @@ function createPlanningBpmCandidates(detectedBpm: number | null): BpmCandidate[]
     return [];
   }
 
-  return getBpmCandidates(detectedBpm).map((candidate) => ({
-    bpm: candidate.value,
-    interpretation: candidate.relation,
-  }));
+  return getBpmCandidates(detectedBpm)
+    .filter(
+      (candidate) =>
+        candidate.relation !== "1:2" && candidate.relation !== "2:3",
+    )
+    .map((candidate) => ({
+      bpm: candidate.value,
+      interpretation: candidate.relation,
+    }));
 }
 
 function createTrackId(
