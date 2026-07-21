@@ -4,6 +4,8 @@
   <p><strong>Run in rhythm.</strong> <strong>Move with purpose.</strong></p>
   <p>Turn the music you love into a cadence-matched running mix, with a precision click that keeps every stride on beat.</p>
   <p>Local-first audio analysis, AI-assisted track arrangement, and deterministic in-browser rendering.</p>
+  <p><a href="https://run-tempo-a3wfhnkpxa-an.a.run.app"><strong>Try the deployed app</strong></a></p>
+  <p><sub>Public demo note: an OpenAI API key is intentionally not configured, so GPT-5.6-assisted arrangement is disabled and multi-track planning automatically uses the deterministic local planner. Local analysis, preview, rendering, and export remain available.</sub></p>
 </div>
 
 ## Overview
@@ -17,6 +19,15 @@ The application separates creative decisions from exact audio processing:
 - Local audio files remain on the device throughout analysis and rendering.
 
 If the OpenAI API is unavailable, multi-track planning automatically falls back to a deterministic local planner.
+
+## Built with Codex and GPT-5.6
+
+RunTempo uses GPT-5.6 in two distinct ways: GPT-5.6 Sol worked through Codex as an engineering collaborator, while GPT-5.6 Terra powers an optional feature inside the product.
+
+- **GPT-5.6 Sol through Codex as the engineering collaborator:** GPT-5.6 Sol was used throughout development to turn the product idea into a working application. It helped design and refine the UI, implement React and TypeScript interactions, build backend logic and API integration, debug the audio and planning pipelines, improve runtime performance, write tests, and maintain documentation.
+- **GPT-5.6 Terra as the in-product music director:** In multi-track mode, GPT-5.6 Terra ranks compatible tracks for each workout segment and returns structured selections with concise reasoning. It works from locally extracted metadata—such as BPM, energy, key, mood, duration, and precomputed candidate scores—rather than raw audio.
+- **AI judgment with deterministic execution:** GPT-5.6 Terra makes the creative arrangement decision; validated TypeScript and Web Audio code handles timing, tempo adjustment, beat alignment, transitions, click placement, and final rendering. This keeps the output precise, testable, and privacy-conscious.
+- **Human-directed, test-verified development:** Codex and GPT-5.6 Sol accelerated implementation, optimization, and iteration, while final product decisions and validation remained human-directed. Generated changes were checked through code review, builds, and automated tests.
 
 ## Features
 
@@ -63,7 +74,7 @@ If the OpenAI API is unavailable, multi-track planning automatically falls back 
 | Audio intelligence | Essentia.js, TensorFlow.js, TempoCNN, MusiCNN | BPM, mood, energy, musical key, and click detection |
 | Planning engine | TypeScript | Candidate scoring, coverage checks, plan variants, and executable timing |
 | Backend | Node.js, Express, Zod | API orchestration, validation, CORS, and production static hosting |
-| AI arrangement | OpenAI Responses API | Metadata-only track ranking and selection rationale |
+| AI arrangement | GPT-5.6 Terra, OpenAI Responses API | Metadata-only track ranking and selection rationale |
 | Media and artwork | yt-dlp, FFmpeg, MusicBrainz, Cover Art Archive | Authorized audio import, conversion, and cover lookup |
 | Deployment | Docker, Google Cloud Run | Reproducible container builds and production hosting |
 
