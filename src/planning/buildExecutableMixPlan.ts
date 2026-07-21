@@ -26,6 +26,7 @@ export function buildExecutableMixPlan(args: {
   selectionPlan: OpenAISelectionPlan;
   crossfadeSec: number;
   allowLoop?: boolean;
+  trimToPlanDuration?: boolean;
 }): ExecutableMixPlan {
   const blocks: ExecutableBlock[] = [];
   const tracksById = new Map(args.tracks.map((track) => [track.trackId, track]));
@@ -35,7 +36,10 @@ export function buildExecutableMixPlan(args: {
       segmentPlan,
     ]),
   );
-  for (const segment of args.runningPlan.segments) {
+  for (const [segmentIndex, segment] of args.runningPlan.segments.entries()) {
+    const shouldTrimAtSegmentEnd =
+      (args.trimToPlanDuration ?? true) ||
+      segmentIndex < args.runningPlan.segments.length - 1;
     const segmentPlan = segmentPlansById.get(segment.segmentId);
 
     if (!segmentPlan) {
@@ -93,10 +97,9 @@ export function buildExecutableMixPlan(args: {
         segment.startSec,
         cursorSec - crossfadeWithPreviousSec,
       );
-      let mixEndSec = Math.min(
-        segment.endSec,
-        mixStartSec + resolved.blockDurationSec,
-      );
+      let mixEndSec = shouldTrimAtSegmentEnd
+        ? Math.min(segment.endSec, mixStartSec + resolved.blockDurationSec)
+        : mixStartSec + resolved.blockDurationSec;
       crossfadeWithPreviousSec = previousBlock
         ? Math.min(
             crossfadeWithPreviousSec,
@@ -108,10 +111,9 @@ export function buildExecutableMixPlan(args: {
         segment.startSec,
         cursorSec - crossfadeWithPreviousSec,
       );
-      mixEndSec = Math.min(
-        segment.endSec,
-        mixStartSec + resolved.blockDurationSec,
-      );
+      mixEndSec = shouldTrimAtSegmentEnd
+        ? Math.min(segment.endSec, mixStartSec + resolved.blockDurationSec)
+        : mixStartSec + resolved.blockDurationSec;
 
       if (mixEndSec <= cursorSec) {
         break;
@@ -171,9 +173,17 @@ export function buildExecutableMixPlan(args: {
     }
   }
 
+  const renderedDurationSec = blocks.reduce(
+    (durationSec, block) => Math.max(durationSec, block.mixEndSec),
+    args.runningPlan.totalDurationSec,
+  );
+
   return {
     mixTitle: args.selectionPlan.mixTitle,
-    totalDurationSec: args.runningPlan.totalDurationSec,
+    totalDurationSec:
+      args.trimToPlanDuration ?? true
+        ? args.runningPlan.totalDurationSec
+        : renderedDurationSec,
     blocks,
   };
 }

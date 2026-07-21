@@ -166,6 +166,7 @@ export function MultiTrackPlanner({
   const [activeVariantId, setActiveVariantId] =
     useState<MixPlanStrategy>("balanced");
   const [isApplyingPlan, setIsApplyingPlan] = useState(false);
+  const [trimToPlanDuration, setTrimToPlanDuration] = useState(true);
   const [analysisMessage, setAnalysisMessage] = useState<AnalysisMessage | null>(
     null,
   );
@@ -610,6 +611,7 @@ export function MultiTrackPlanner({
 
   const buildLoadedExecutablePlan = async (
     nextSelectionPlan: OpenAISelectionPlan,
+    shouldTrimToPlanDuration: boolean = trimToPlanDuration,
   ) => {
     const baseExecutablePlan = applyClickSettingsToPlan(
       buildExecutableMixPlan({
@@ -618,6 +620,7 @@ export function MultiTrackPlanner({
         selectionPlan: nextSelectionPlan,
         crossfadeSec: DEFAULT_CROSSFADE_SEC,
         allowLoop: true,
+        trimToPlanDuration: shouldTrimToPlanDuration,
       }),
       DEFAULT_MULTI_TRACK_CLICK_SETTINGS,
     );
@@ -789,6 +792,31 @@ export function MultiTrackPlanner({
     await applySelectionPlan(
       moveSelection(selectionPlan, segmentId, fromIndex, toIndex),
     );
+  };
+
+  const handleTrimToPlanDurationChange = async (shouldTrim: boolean) => {
+    if (!selectionPlan || shouldTrim === trimToPlanDuration || isApplyingPlan) {
+      return;
+    }
+
+    setTrimToPlanDuration(shouldTrim);
+    setIsApplyingPlan(true);
+    setError(null);
+
+    try {
+      const loaded = await buildLoadedExecutablePlan(selectionPlan, shouldTrim);
+      setExecutablePlan(loaded.executablePlan);
+      setSelectedTrackAudioMap(loaded.trackAudioMap);
+      resetRenderedOutput();
+    } catch (planningError) {
+      setTrimToPlanDuration(!shouldTrim);
+      setError({
+        kind: "planning",
+        message: planningError instanceof Error ? planningError.message : null,
+      });
+    } finally {
+      setIsApplyingPlan(false);
+    }
   };
 
   const handleNext = async () => {
@@ -1083,7 +1111,7 @@ export function MultiTrackPlanner({
               </>
             ) : null}
 
-            {currentStep === 4 && candidateGroups ? (
+            {currentStep === 4 && candidateGroups && executablePlan ? (
               <div className="step-four-workspace">
                 {planVariants.length > 0 && plannerResultSource ? (
                   <PlanVariantPicker
@@ -1101,6 +1129,8 @@ export function MultiTrackPlanner({
                   <MixPlanEditor
                     runningPlan={selectedPlan}
                     selectionPlan={selectionPlan}
+                    executablePlan={executablePlan}
+                    trimToPlanDuration={trimToPlanDuration}
                     tracks={tracks}
                     candidateGroups={candidateGroups}
                     isBusy={isApplyingPlan || isPlanning}
@@ -1109,6 +1139,9 @@ export function MultiTrackPlanner({
                     segmentNames={copy.runningPlan.segmentNames}
                     onMove={(segmentId, fromIndex, toIndex) => {
                       void handleMoveSelection(segmentId, fromIndex, toIndex);
+                    }}
+                    onTrimToPlanDurationChange={(shouldTrim) => {
+                      void handleTrimToPlanDurationChange(shouldTrim);
                     }}
                   />
                 ) : null}

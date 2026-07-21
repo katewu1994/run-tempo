@@ -242,6 +242,23 @@ test("blocks are clipped to the segment and crossfades really overlap", () => {
   assert.ok(plan.blocks.every((block) => block.sourceEndSec <= track.durationSec));
 });
 
+test("the final song can finish beyond the plan when trimming is disabled", () => {
+  const track = { ...createTrack("raw", 180), durationSec: 150 };
+  const plan = buildExecutableMixPlan({
+    runningPlan,
+    tracks: [track],
+    selectionPlan: createSelectionPlan(track.trackId),
+    crossfadeSec: 6,
+    allowLoop: true,
+    trimToPlanDuration: false,
+  });
+
+  assert.equal(plan.blocks.length, 1);
+  assert.equal(plan.blocks[0].mixEndSec, 150);
+  assert.equal(plan.blocks[0].sourceEndSec, 150);
+  assert.equal(plan.totalDurationSec, 150);
+});
+
 test("progressive cadence is discretized into selectable fixed steps", () => {
   const plan = buildRunningPlanFromSettings({
     ...DEFAULT_RUNNING_PLAN_SETTINGS,

@@ -1,12 +1,14 @@
 import { useState, type DragEvent } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Info, Repeat2 } from "lucide-react";
 import type {
   BpmInterpretation,
   CandidateScore,
+  ExecutableMixPlan,
   OpenAISelectionPlan,
   RunningPlan,
   TrackFeature,
 } from "../domain/mixTypes";
+import { formatDuration } from "../utils/format";
 import type { MultiTrackCopy } from "./multiTrackFormat";
 import {
   getLocalizedBpmInterpretation,
@@ -18,6 +20,8 @@ type DragSelection = { segmentId: string; index: number } | null;
 export function MixPlanEditor({
   runningPlan,
   selectionPlan,
+  executablePlan,
+  trimToPlanDuration,
   tracks,
   candidateGroups,
   isBusy,
@@ -25,9 +29,12 @@ export function MixPlanEditor({
   analysisCopy,
   segmentNames,
   onMove,
+  onTrimToPlanDurationChange,
 }: {
   runningPlan: RunningPlan;
   selectionPlan: OpenAISelectionPlan;
+  executablePlan: ExecutableMixPlan;
+  trimToPlanDuration: boolean;
   tracks: TrackFeature[];
   candidateGroups: Array<{
     segmentId: string;
@@ -38,9 +45,11 @@ export function MixPlanEditor({
   analysisCopy: MultiTrackCopy["candidates"];
   segmentNames: MultiTrackCopy["runningPlan"]["segmentNames"];
   onMove: (segmentId: string, fromIndex: number, toIndex: number) => void;
+  onTrimToPlanDurationChange: (shouldTrim: boolean) => void;
 }) {
   const [dragSelection, setDragSelection] = useState<DragSelection>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isTrimHelpOpen, setIsTrimHelpOpen] = useState(false);
   const tracksById = new Map(tracks.map((track) => [track.trackId, track]));
   const segmentsById = new Map(
     runningPlan.segments.map((segment) => [segment.segmentId, segment]),
@@ -81,6 +90,35 @@ export function MixPlanEditor({
         <div>
           <h2 id="sequence-editor-title">{copy.title}</h2>
         </div>
+        <div className="sequence-trim-control">
+          <label>
+            <input
+              type="checkbox"
+              checked={trimToPlanDuration}
+              disabled={isBusy}
+              onChange={(event) =>
+                onTrimToPlanDurationChange(event.currentTarget.checked)
+              }
+            />
+            <span>{copy.trimToPlanDuration}</span>
+          </label>
+          <div className="sequence-trim-help">
+            <button
+              type="button"
+              aria-label={copy.trimToPlanDurationHelp}
+              aria-expanded={isTrimHelpOpen}
+              aria-controls="trim-to-plan-help"
+              onClick={() => setIsTrimHelpOpen((isOpen) => !isOpen)}
+            >
+              <Info size={15} aria-hidden="true" />
+            </button>
+            {isTrimHelpOpen ? (
+              <div id="trim-to-plan-help" role="note">
+                {copy.trimToPlanDurationHint}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       <div className="sequence-groups">
@@ -89,6 +127,15 @@ export function MixPlanEditor({
           if (!segment || segmentPlan.rankedTrackSelections.length === 0) {
             return null;
           }
+
+          const playbackBlocks = executablePlan.blocks.filter(
+            (block) => block.segmentId === segmentPlan.segmentId,
+          );
+          const hasAutomaticRepeats =
+            playbackBlocks.length > segmentPlan.rankedTrackSelections.length;
+          const hasPlaybackAdjustment =
+            hasAutomaticRepeats ||
+            Math.abs(executablePlan.totalDurationSec - runningPlan.totalDurationSec) > 0.05;
 
           return (
             <section className="sequence-group" key={segmentPlan.segmentId}>
@@ -155,6 +202,63 @@ export function MixPlanEditor({
                   );
                 })}
               </ol>
+
+              {hasPlaybackAdjustment ? (
+                <section
+                  className="sequence-playback-preview"
+                  aria-label={copy.playbackOrder}
+                >
+                  <div className="sequence-playback-heading">
+                    <span className="sequence-playback-icon" aria-hidden="true">
+                      <Repeat2 size={15} />
+                    </span>
+                    <div>
+                      <strong>{copy.playbackOrder}</strong>
+                      <small>
+                        {hasAutomaticRepeats
+                          ? copy.playbackOrderHint
+                          : copy.extendedPlaybackHint}
+                      </small>
+                    </div>
+                    <span className="sequence-block-count">
+                      {copy.blockCount(playbackBlocks.length)}
+                    </span>
+                  </div>
+                  <ol className="sequence-playback-order">
+                    {playbackBlocks.map((block, blockIndex) => {
+                      const isRepeat = playbackBlocks
+                        .slice(0, blockIndex)
+                        .some((previousBlock) => previousBlock.trackId === block.trackId);
+
+                      return (
+                        <li
+                          className={isRepeat ? "is-repeat" : ""}
+                          key={block.blockId}
+                        >
+                          <span className="sequence-playback-index">
+                            {blockIndex + 1}
+                          </span>
+                          <strong>
+                            {tracksById.get(block.trackId)?.fileName ?? block.trackId}
+                          </strong>
+                          <span className="sequence-playback-time">
+                            {copy.mixTime(
+                              formatDuration(block.mixStartSec),
+                              formatDuration(block.mixEndSec),
+                            )}
+                          </span>
+                          {isRepeat ? (
+                            <span className="sequence-repeat-badge">
+                              <Repeat2 size={11} aria-hidden="true" />
+                              {copy.repeated}
+                            </span>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </section>
+              ) : null}
             </section>
           );
         })}

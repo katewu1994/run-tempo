@@ -619,6 +619,17 @@ const en = {
       title: "Reorder tracks",
       drag: "Drag to reorder",
       analysis: "Track analysis",
+      trimToPlanDuration: "Trim to plan duration",
+      trimToPlanDurationHelp: "About trimming to plan duration",
+      trimToPlanDurationHint:
+        "On by default. Turn it off to let the final song finish, extending the output beyond the plan.",
+      playbackOrder: "Final playback order",
+      playbackOrderHint: "Tracks repeat automatically to fill this segment.",
+      extendedPlaybackHint:
+        "The final song plays in full, so the output runs beyond the plan duration.",
+      blockCount: (count: number) => `${count} blocks`,
+      mixTime: (start: string, end: string) => `${start}–${end}`,
+      repeated: "Loop",
     },
     selection: {
       eyebrow: "Mix track list",
