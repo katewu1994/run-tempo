@@ -50,7 +50,7 @@ To enable GPT-assisted planning, create a Secret Manager secret containing the O
 gcloud run deploy run-tempo \
   --source . \
   --region asia-northeast1 \
-  --allow-unauthenticated \
+  --no-invoker-iam-check \
   --set-env-vars OPENAI_MODEL=gpt-5.6-terra \
   --set-secrets OPENAI_API_KEY=<secret-name>:latest
 ```
@@ -88,7 +88,7 @@ Use a split deployment only when the frontend is hosted separately. Deploy the b
 gcloud run deploy run-tempo-planner \
   --source backend \
   --region asia-northeast1 \
-  --allow-unauthenticated \
+  --no-invoker-iam-check \
   --set-env-vars OPENAI_MODEL=gpt-5.6-terra,ALLOWED_ORIGINS=<frontend-origin> \
   --set-secrets OPENAI_API_KEY=<secret-name>:latest
 ```

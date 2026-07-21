@@ -55,9 +55,11 @@ export function TrackFeatureTable({
                 </td>
                 <td>
                   <div className="embedded-click-cell">
-                    <span className={`embedded-click-status ${track.embeddedClickStatus ?? "not_detected"}`}>
-                      {copy.clickStatus[track.embeddedClickStatus ?? "not_detected"]}
-                    </span>
+                    {track.embeddedClickStatus !== "suspected" ? (
+                      <span className={`embedded-click-status ${track.embeddedClickStatus ?? "not_detected"}`}>
+                        {copy.clickStatus[track.embeddedClickStatus ?? "not_detected"]}
+                      </span>
+                    ) : null}
                     {track.embeddedClickStatus === "suspected" && onEmbeddedClickChange ? (
                       <div
                         className="embedded-click-confirmation"

@@ -198,22 +198,6 @@ export function MultiTrackPlanner({
     () => buildRunningPlanFromSettings(planSettings),
     [planSettings],
   );
-  const libraryStats = useMemo(() => {
-    const cadences = tracks.flatMap((track) =>
-      track.bpmCandidates.map((candidate) => candidate.bpm),
-    );
-    const cadenceRange =
-      cadences.length > 0
-        ? `${Math.min(...cadences).toFixed(0)}–${Math.max(...cadences).toFixed(0)} BPM`
-        : "--";
-
-    return {
-      total: tracks.length,
-      finished: tracks.filter((track) => track.sourceKind === "standardized").length,
-      raw: tracks.filter((track) => track.sourceKind === "raw").length,
-      cadenceRange,
-    };
-  }, [tracks]);
   const analysisMessageText = useMemo(
     () => formatAnalysisMessage(analysisMessage, copy.upload),
     [analysisMessage, copy.upload],
@@ -278,10 +262,11 @@ export function MultiTrackPlanner({
         hasSelection,
         hasExecutable,
         isPlanning: isPlanning || isApplyingPlan,
+        isAnalyzing,
         copy,
         statusCopy,
       }).map((step) =>
-        step.number === currentStep
+        step.number === currentStep && step.state !== "locked"
           ? { ...step, status: statusCopy.current }
           : step,
       ),
@@ -294,6 +279,7 @@ export function MultiTrackPlanner({
       hasSelection,
       hasTracks,
       isApplyingPlan,
+      isAnalyzing,
       isPlanning,
       statusCopy,
     ],
@@ -1015,12 +1001,36 @@ export function MultiTrackPlanner({
                         aria-live="polite"
                       >
                         <span className="multi-import-progress-copy">
-                          <LoaderCircle size={16} aria-hidden="true" />
-                          <span>
+                          <span className="multi-import-progress-state">
+                            <LoaderCircle size={16} aria-hidden="true" />
+                            <span>
+                              {analysisMessage?.kind === "processing"
+                                ? `${analysisMessage.current} / ${analysisMessage.total}`
+                                : copy.upload.analyzingAudio}
+                            </span>
+                          </span>
+                          <b className="multi-import-progress-percent">
+                            {importProgress ?? 0}%
+                          </b>
+                        </span>
+                        {analysisMessage?.kind === "processing" ? (
+                          <span className="multi-import-progress-details">
+                            <span
+                              className="multi-import-progress-file"
+                              title={analysisMessage.fileName}
+                            >
+                              <FileAudio size={14} aria-hidden="true" />
+                              <span>{analysisMessage.fileName}</span>
+                            </span>
+                            <span className="multi-import-progress-stage">
+                              {copy.upload.processingStages[analysisMessage.stage]}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="multi-import-progress-summary">
                             {analysisMessageText ?? copy.upload.analyzingAudio}
                           </span>
-                          <b>{importProgress ?? 0}%</b>
-                        </span>
+                        )}
                         <span
                           className="multi-import-progress-track"
                           aria-hidden="true"
@@ -1030,55 +1040,22 @@ export function MultiTrackPlanner({
                       </span>
                     ) : null}
                   </label>
-                  <div className="format-row" aria-label={copy.upload.formatsAria}>
-                    <span>MP3</span>
-                    <span>WAV</span>
-                    <span>M4A</span>
-                    <span>AAC</span>
-                  </div>
+                  {tracks.length > 0 ? (
+                    <div className="multi-library-clear-row">
+                      <button
+                        type="button"
+                        className="secondary-action clear-library-action"
+                        disabled={isAnalyzing}
+                        onClick={handleClearLibrary}
+                      >
+                        <Trash2 size={15} aria-hidden="true" />
+                        {copy.upload.clearLibrary}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
-                {tracks.length > 0 || errorText ? (
-                  <div className="multi-library-footer">
-                    <div className="library-import-footer">
-                      {tracks.length > 0 ? (
-                        <dl className="multi-library-compact-summary">
-                          <div className="library-summary-card library-summary-total">
-                            <dt>{copy.upload.librarySummary.total}</dt>
-                            <dd>
-                              <strong>{libraryStats.total}</strong>
-                              <small>
-                                {libraryStats.finished} {copy.upload.librarySummary.finished}
-                                <i>·</i>
-                                {libraryStats.raw} {copy.upload.librarySummary.raw}
-                              </small>
-                            </dd>
-                          </div>
-                          <div className="library-summary-card library-summary-cadence">
-                            <dt>{copy.upload.librarySummary.cadenceRange}</dt>
-                            <dd>
-                              <strong>{libraryStats.cadenceRange}</strong>
-                              <small>{copy.upload.cadenceRangeHint(libraryStats.total)}</small>
-                            </dd>
-                          </div>
-                        </dl>
-                      ) : null}
-                      {tracks.length > 0 ? (
-                        <button
-                          type="button"
-                          className="secondary-action clear-library-action"
-                          disabled={isAnalyzing}
-                          onClick={handleClearLibrary}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                          {copy.upload.clearLibrary}
-                        </button>
-                      ) : null}
-                    </div>
-
-                    {errorText ? <p className="error-text">{errorText}</p> : null}
-                  </div>
-                ) : null}
+                {errorText ? <p className="error-text">{errorText}</p> : null}
               </section>
               </>
             ) : null}
@@ -1352,6 +1329,7 @@ function getMultiTrackFlowSteps({
   hasSelection,
   hasExecutable,
   isPlanning,
+  isAnalyzing,
   copy,
   statusCopy,
 }: {
@@ -1361,9 +1339,45 @@ function getMultiTrackFlowSteps({
   hasSelection: boolean;
   hasExecutable: boolean;
   isPlanning: boolean;
+  isAnalyzing: boolean;
   copy: MultiTrackCopy;
   statusCopy: AppCopy["flow"]["statuses"];
 }): FlowStep[] {
+  if (isAnalyzing) {
+    return [
+      {
+        number: 1,
+        label: copy.flow.labels.loadTracks,
+        status: statusCopy.current,
+        state: "current",
+      },
+      {
+        number: 2,
+        label: copy.flow.labels.confirmTracks,
+        status: statusCopy.locked,
+        state: "locked",
+      },
+      {
+        number: 3,
+        label: copy.flow.labels.buildPlan,
+        status: statusCopy.locked,
+        state: "locked",
+      },
+      {
+        number: 4,
+        label: copy.flow.labels.reviewPlan,
+        status: statusCopy.locked,
+        state: "locked",
+      },
+      {
+        number: 5,
+        label: copy.flow.labels.export,
+        status: statusCopy.locked,
+        state: "locked",
+      },
+    ];
+  }
+
   return [
     {
       number: 1,
