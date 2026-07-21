@@ -63,6 +63,7 @@ import {
 } from "../planning/editSelectionPlan";
 import {
   ExecutableMixPlanView,
+  type ExportRenderPhase,
   type MultiTrackExportSettings,
 } from "./ExecutableMixPlanView";
 import { RunningPlanSelector } from "./RunningPlanSelector";
@@ -164,6 +165,8 @@ export function MultiTrackPlanner({
     null,
   );
   const [renderIntent, setRenderIntent] = useState<RenderIntent | null>(null);
+  const [exportRenderPhase, setExportRenderPhase] =
+    useState<ExportRenderPhase | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const isRendering = renderIntent !== null;
 
@@ -802,6 +805,7 @@ export function MultiTrackPlanner({
     }
 
     setRenderIntent("export");
+    setExportRenderPhase("mix");
     setRenderError(null);
 
     try {
@@ -813,12 +817,17 @@ export function MultiTrackPlanner({
         return;
       }
 
+      setExportRenderPhase("artwork");
+      await waitForNextPaint();
       const artwork = artworkFile
         ? {
             data: new Uint8Array(await artworkFile.arrayBuffer()),
             mimeType: artworkFile.type || "image/jpeg",
           }
         : await generateCoverArtwork(generatedCoverInput);
+
+      setExportRenderPhase("encode");
+      await waitForNextPaint();
       const blob = audioBufferToWavBlob(renderedBuffer, {
         title: fileName.replace(/\.wav$/i, ""),
         artwork,
@@ -829,6 +838,7 @@ export function MultiTrackPlanner({
       setRenderError(copy.executable.renderError);
     } finally {
       setRenderIntent(null);
+      setExportRenderPhase(null);
     }
   };
 
@@ -1060,6 +1070,7 @@ export function MultiTrackPlanner({
                 copy={copy.executable}
                 isRendering={isRendering}
                 renderIntent={renderIntent}
+                exportRenderPhase={exportRenderPhase}
                 renderError={renderError}
                 onExportWav={(settings) => void handleExportMixWav(settings)}
               />

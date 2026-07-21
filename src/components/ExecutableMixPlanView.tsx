@@ -23,6 +23,8 @@ import { type MultiTrackCopy } from "./multiTrackFormat";
 
 const COVER_COLOR_OPTIONS = [267, 218, 176, 118, 30, 52, 2, 346, 294, 194, 148, 338];
 
+export type ExportRenderPhase = "mix" | "artwork" | "encode";
+
 type ExecutableMixPlanViewProps = {
   executablePlan: ExecutableMixPlan;
   planModeLabel: string;
@@ -30,6 +32,7 @@ type ExecutableMixPlanViewProps = {
   copy: MultiTrackCopy["executable"];
   isRendering: boolean;
   renderIntent: "export" | null;
+  exportRenderPhase: ExportRenderPhase | null;
   renderError: string | null;
   onExportWav: (settings: MultiTrackExportSettings) => void;
 };
@@ -47,6 +50,7 @@ export function ExecutableMixPlanView({
   copy,
   isRendering,
   renderIntent,
+  exportRenderPhase,
   renderError,
   onExportWav,
 }: ExecutableMixPlanViewProps) {
@@ -92,6 +96,10 @@ export function ExecutableMixPlanView({
     () => createGeneratedCoverTheme(generatedCoverInput),
     [generatedCoverInput],
   );
+  const exportPhases = ["mix", "artwork", "encode"] as const;
+  const activeExportPhaseIndex = exportRenderPhase
+    ? exportPhases.indexOf(exportRenderPhase)
+    : -1;
 
   useEffect(() => {
     setFileName(defaultFileName);
@@ -274,14 +282,49 @@ export function ExecutableMixPlanView({
         </div>
       </section>
 
-      <div className="export-ready-card multi-export-ready-card">
+      <div
+        className={`export-ready-card multi-export-ready-card${
+          isRendering ? " is-processing" : ""
+        }`}
+        role={isRendering ? "status" : undefined}
+        aria-live={isRendering ? "polite" : undefined}
+      >
         <div className="export-ready-icon">
-          <CheckCircle2 size={22} aria-hidden="true" />
+          {isRendering ? (
+            <span className="output-processing-glyph" aria-hidden="true">
+              <LoaderCircle size={23} />
+              <i />
+              <i />
+              <i />
+            </span>
+          ) : (
+            <CheckCircle2 size={22} aria-hidden="true" />
+          )}
         </div>
         <div className="export-target">
-          <span>{copy.output}</span>
+          <span>{isRendering ? copy.processingOutput : copy.output}</span>
           <strong>{resolvedFileName}</strong>
-          <small>{copy.outputHint}</small>
+          {isRendering && exportRenderPhase ? (
+            <div className="output-processing-stages" aria-label={copy.processingStagesLabel}>
+              {exportPhases.map((phase, index) => (
+                <span
+                  key={phase}
+                  className={
+                    index < activeExportPhaseIndex
+                      ? "is-complete"
+                      : index === activeExportPhaseIndex
+                        ? "is-current"
+                        : ""
+                  }
+                >
+                  <i aria-hidden="true" />
+                  {copy.renderPhases[phase]}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <small>{copy.outputHint}</small>
+          )}
         </div>
         <button
           type="button"
@@ -303,20 +346,6 @@ export function ExecutableMixPlanView({
           {renderIntent === "export" ? copy.renderingExport : copy.exportWav}
         </button>
       </div>
-
-      {isRendering && renderIntent ? (
-        <div className="mix-render-loading" role="status" aria-live="polite">
-          <span className="mix-render-loading-icon" aria-hidden="true">
-            <LoaderCircle />
-          </span>
-          <span className="mix-render-loading-copy">
-            <strong>
-              {copy.preparingExport}
-            </strong>
-            <small>{copy.renderingHint}</small>
-          </span>
-        </div>
-      ) : null}
 
       {renderError ? <p className="error-text">{renderError}</p> : null}
     </section>

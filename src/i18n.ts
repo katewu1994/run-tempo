@@ -730,6 +730,13 @@ const en = {
       replaceCover: "Replace",
       removeCover: "Remove",
       output: "Output",
+      processingOutput: "Output · Processing",
+      processingStagesLabel: "Export progress",
+      renderPhases: {
+        mix: "Render mix",
+        artwork: "Prepare cover",
+        encode: "Build WAV",
+      },
       outputHint: "WAV · template or uploaded cover embedded.",
       exportWav: "Export WAV",
       renderReady: (duration: string) => `Rendered preview ready: ${duration}.`,
