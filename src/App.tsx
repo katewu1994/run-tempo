@@ -36,6 +36,10 @@ import { UploadPanel } from "./components/UploadPanel";
 import { WorkflowGuide, type FlowStep } from "./components/WorkflowGuide";
 import { APP_COPY, type AppCopy } from "./i18n";
 import { downloadBlob } from "./utils/downloadBlob";
+import {
+  loadSingleTrackSessionSettings,
+  saveSingleTrackSessionSettings,
+} from "./utils/singleTrackSessionSettings";
 
 type AnalysisStatus = "idle" | "loading" | "analyzing" | "complete" | "failed";
 type PlaybackMode = "idle" | "mix";
@@ -48,7 +52,6 @@ type PlaybackHandle = {
   metronomeGainNode?: GainNode;
 };
 
-const DEFAULT_TARGET_BPM = 180;
 const PREVIEW_SECONDS = 30;
 const BPM_AUDITION_SONG_GAIN = 0.28;
 const BPM_AUDITION_CLICK_GAIN = 0.9;
@@ -63,22 +66,31 @@ function App() {
   const metronomeGainNodeRef = useRef<GainNode | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const analysisRequestIdRef = useRef(0);
-  const targetBpmRef = useRef(DEFAULT_TARGET_BPM);
+  const sessionSettingsRef = useRef(loadSingleTrackSessionSettings());
+  const targetBpmRef = useRef(sessionSettingsRef.current.targetBpm);
   const [appMode, setAppMode] = useState<AppMode>("single");
   const [loadedAudio, setLoadedAudio] = useState<LoadedAudio | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [bpmAnalysis, setBpmAnalysis] = useState<SingleTrackBpmAnalysis | null>(null);
   const [selectedDetector, setSelectedDetector] =
     useState<BpmCandidateSource | null>(null);
+  const [preferredDetector, setPreferredDetector] =
+    useState<BpmCandidateSource | null>(
+      sessionSettingsRef.current.preferredDetector,
+    );
   const [clickRelation, setClickRelation] =
     useState<ClickTempoRelation>("1:1");
-  const [targetBpm, setTargetBpm] = useState(DEFAULT_TARGET_BPM);
-  const [masterGain, setMasterGain] = useState(1);
+  const [targetBpm, setTargetBpm] = useState(
+    sessionSettingsRef.current.targetBpm,
+  );
+  const [masterGain, setMasterGain] = useState(
+    sessionSettingsRef.current.masterGain,
+  );
   const [metronomeSettings, setMetronomeSettings] = useState<MetronomeSettings>({
-    targetBpm: DEFAULT_TARGET_BPM,
-    volume: 1,
-    clickStyle: "sharp",
-    accentEvery: 2,
+    targetBpm: sessionSettingsRef.current.targetBpm,
+    volume: sessionSettingsRef.current.clickVolume,
+    clickStyle: sessionSettingsRef.current.clickStyle,
+    accentEvery: sessionSettingsRef.current.accentEvery,
     offsetMs: 0,
   });
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("idle");
@@ -147,6 +159,24 @@ function App() {
   useEffect(() => {
     document.documentElement.lang = "en";
   }, []);
+
+  useEffect(() => {
+    saveSingleTrackSessionSettings({
+      targetBpm,
+      preferredDetector,
+      masterGain,
+      clickVolume: metronomeSettings.volume,
+      clickStyle: metronomeSettings.clickStyle,
+      accentEvery: metronomeSettings.accentEvery,
+    });
+  }, [
+    masterGain,
+    metronomeSettings.accentEvery,
+    metronomeSettings.clickStyle,
+    metronomeSettings.volume,
+    preferredDetector,
+    targetBpm,
+  ]);
 
   useEffect(
     () => () => {
@@ -320,7 +350,6 @@ function App() {
       setAnalysisStatus("loading");
       setBpmAnalysis(null);
       setSelectedDetector(null);
-      setClickRelation("1:1");
       setMetronomeSettings((settings) => ({ ...settings, offsetMs: 0 }));
 
       let decoded: LoadedAudio;
@@ -374,23 +403,32 @@ function App() {
         );
         const defaultDetector =
           recommendation?.source ?? decision.recommendedDetector;
-        const defaultBaseBpm =
+        const nextDetector = decision.detectors.some(
+          (detector) => detector.source === preferredDetector,
+        )
+          ? preferredDetector
+          : defaultDetector;
+        const nextBaseBpm =
           decision.detectors.find(
-            (detector) => detector.source === defaultDetector,
+            (detector) => detector.source === nextDetector,
           )?.bpm ?? null;
-        const defaultRelation = recommendation?.relation ?? "1:1";
-        const defaultClickBpm = recommendation?.clickBpm ?? defaultBaseBpm;
+        const nextRelation =
+          getClickTempoOptions(nextBaseBpm, targetBpmRef.current).find(
+            (option) => option.recommended,
+          )?.relation ?? "1:1";
+        const nextClickBpm = getClickTempoBpm(nextBaseBpm, nextRelation);
         const defaultTempoRatio = getTempoRatio(
-          defaultClickBpm,
+          nextClickBpm,
           targetBpmRef.current,
         );
-        const defaultMatchedClickBpm = defaultClickBpm
-          ? Math.round(defaultClickBpm * defaultTempoRatio * 10) / 10
+        const defaultMatchedClickBpm = nextClickBpm
+          ? Math.round(nextClickBpm * defaultTempoRatio * 10) / 10
           : null;
 
         setBpmAnalysis(analysis);
-        setSelectedDetector(defaultDetector);
-        setClickRelation(defaultRelation);
+        setSelectedDetector(nextDetector);
+        setClickRelation(nextRelation);
+        setPreferredDetector(nextDetector);
         setAnalysisStatus(defaultMatchedClickBpm ? "complete" : "failed");
 
         if (defaultMatchedClickBpm !== null) {
@@ -425,7 +463,12 @@ function App() {
         }
       }
     },
-    [applyAutoBeatSync, getAudioContext, stopPlayback],
+    [
+      applyAutoBeatSync,
+      getAudioContext,
+      preferredDetector,
+      stopPlayback,
+    ],
   );
 
   const applyClickTempo = useCallback(
@@ -478,6 +521,7 @@ function App() {
 
       setSelectedDetector(source);
       setClickRelation(relation);
+      setPreferredDetector(source);
       applyClickTempo(nextClickBpm);
     },
     [applyClickTempo, bpmDecision.detectors, targetBpm],
@@ -512,6 +556,7 @@ function App() {
 
       setSelectedDetector(recommendation.source);
       setClickRelation(recommendation.relation);
+      setPreferredDetector(recommendation.source);
       applyClickTempo(recommendation.clickBpm, clamped);
     },
     [applyClickTempo, bpmDecision.detectors],
@@ -876,7 +921,7 @@ function getFlowSteps({
       number: 2,
       label: copy.flow.labels.setCadence,
       status: hasSourceBpm
-        ? copy.flow.statuses.ready
+        ? copy.flow.statuses.done
         : hasAudio
           ? copy.flow.statuses.current
           : copy.flow.statuses.locked,
