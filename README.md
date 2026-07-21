@@ -65,7 +65,7 @@ If the OpenAI API is unavailable, multi-track planning automatically falls back 
 | Backend | Node.js, Express, Zod | API orchestration, validation, CORS, and production static hosting |
 | AI arrangement | OpenAI Responses API | Metadata-only track ranking and selection rationale |
 | Media and artwork | yt-dlp, FFmpeg, MusicBrainz, Cover Art Archive | Authorized audio import, conversion, and cover lookup |
-| Deployment | Docker, Google Cloud Run | Reproducible container builds and production hosting |
+| Deployment | Vercel | Vite builds, preview deployments, and production frontend hosting |
 
 ## Getting started
 
@@ -194,18 +194,20 @@ npm run test:multi
 
 The tests cover BPM interpretation, detector agreement, cadence relationships, click detection, locked-click safety, plan variants, repeat gaps, WAV chunks, embedded metadata, artwork, and OpenAI response parsing.
 
-## Docker and deployment
+## Vercel deployment
 
-The root Dockerfile builds a single production image containing the frontend, backend, yt-dlp, and FFmpeg:
+Import the repository into Vercel as a Vite project with the repository root as the project root. Use the following build settings:
 
-```bash
-docker build -t run-tempo .
-docker run --rm --env-file backend/.env -p 8080:8080 run-tempo
-```
+| Setting | Value |
+| --- | --- |
+| Framework preset | Vite |
+| Install command | `npm install` |
+| Build command | `npm run build` |
+| Output directory | `dist` |
 
-Open `http://localhost:8080` after the container starts.
+The frontend can analyze, plan, render, and export local audio in the browser. If the planner backend is unavailable, multi-track arrangement falls back to the deterministic local planner.
 
-For single-service and split-service Google Cloud Run deployment instructions, see [`docs/openai-cloud-run.md`](./docs/openai-cloud-run.md).
+To enable GPT-assisted arrangement, YouTube import, and cover-art proxying in production, deploy the Express backend separately and set `VITE_PLANNER_API_BASE_URL` in the Vercel project to its public origin. Configure the backend's `ALLOWED_ORIGINS` with the Vercel production domain. Keep `OPENAI_API_KEY` on the backend only.
 
 ## Project structure
 
@@ -220,7 +222,7 @@ For single-service and split-service Google Cloud Run deployment instructions, s
 ├── src/planning/            Candidate scoring and mix-plan construction
 ├── src/utils/               Download, formatting, and export utilities
 ├── tests/                   Frontend audio and planning tests
-└── Dockerfile               Combined production image
+└── Dockerfile               Optional self-hosted production image
 ```
 
 ## Current limitations
@@ -236,7 +238,6 @@ For single-service and split-service Google Cloud Run deployment instructions, s
 ## Additional documentation
 
 - [`docs/technical-spec-v0.1.md`](./docs/technical-spec-v0.1.md) — initial technical specification
-- [`docs/openai-cloud-run.md`](./docs/openai-cloud-run.md) — planner backend and Cloud Run deployment
 - [`docs/pitch-script.md`](./docs/pitch-script.md) — product pitch
 
 ## License

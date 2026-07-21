@@ -1055,15 +1055,17 @@ export function MultiTrackPlanner({
           </div>
 
           <nav className="stage-nav" aria-label={navCopy.ariaLabel}>
-            <button
-              type="button"
-              className="secondary-action"
-              disabled={!canGoBack}
-              onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
-            >
-              <ChevronLeft size={18} aria-hidden="true" />
-              {navCopy.back}
-            </button>
+            {currentStep > 1 ? (
+              <button
+                type="button"
+                className="secondary-action"
+                disabled={!canGoBack}
+                onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+                {navCopy.back}
+              </button>
+            ) : null}
             <span className="stage-progress">
               {currentStep} / {flowSteps.length}
             </span>

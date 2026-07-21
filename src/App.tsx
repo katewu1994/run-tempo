@@ -174,7 +174,6 @@ function App() {
     [flowSteps.length, isStepUnlocked],
   );
   const canGoNext = currentStep < flowSteps.length && isStepUnlocked(currentStep + 1);
-  const canGoBack = currentStep > 1;
 
   useEffect(() => {
     document.documentElement.lang = "en";
@@ -923,15 +922,16 @@ function App() {
             </div>
 
             <nav className="stage-nav" aria-label={copy.nav.ariaLabel}>
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={!canGoBack}
-                onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
-              >
-                <ChevronLeft size={18} aria-hidden="true" />
-                {copy.nav.back}
-              </button>
+              {currentStep > 1 ? (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
+                >
+                  <ChevronLeft size={18} aria-hidden="true" />
+                  {copy.nav.back}
+                </button>
+              ) : null}
               <span className="stage-progress">
                 {currentStep} / {flowSteps.length}
               </span>
