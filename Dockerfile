@@ -11,6 +11,7 @@ RUN npm ci
 
 COPY index.html vite.config.ts tsconfig*.json ./
 COPY src ./src
+COPY public ./public
 RUN npm run build
 
 FROM node:22-slim AS backend-build

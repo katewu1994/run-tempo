@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AudioLines,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
@@ -145,19 +144,11 @@ function App() {
       }),
     [canExport, clickBpm, copy, loadedAudio, playbackMode],
   );
-  const appStatus = useMemo(
-    () => getAppStatus(loadedAudio !== null, playbackMode, copy),
-    [copy, loadedAudio, playbackMode],
-  );
   const isSingleTrackPlaying = playbackMode !== "idle";
   const isActivePlayback =
     appMode === "single"
       ? isSingleTrackPlaying
       : false;
-  const visibleAppStatus =
-    appMode === "single"
-      ? appStatus
-      : copy.status.loadAudioToStart;
   const isStepUnlocked = useCallback(
     (stepNumber: number) => {
       const step = flowSteps.find((item) => item.number === stepNumber);
@@ -790,15 +781,6 @@ function App() {
               Stop
             </button>
           ) : null}
-          <div
-            className={`status-chip audio-status-chip${isActivePlayback ? " live" : ""}`}
-            role="status"
-            aria-live="polite"
-            aria-label={visibleAppStatus}
-            title={visibleAppStatus}
-          >
-            <AudioLines size={15} strokeWidth={2.2} aria-hidden="true" />
-          </div>
           <span
             className={`gpt-api-status ${gptApiConnection.status}`}
             role="status"
@@ -1013,18 +995,6 @@ function getFlowSteps({
       state: canExport ? "ready" : "locked",
     },
   ];
-}
-
-function getAppStatus(
-  hasAudio: boolean,
-  playbackMode: PlaybackMode,
-  copy: AppCopy,
-): string {
-  if (playbackMode === "mix") {
-    return copy.status.previewingMix;
-  }
-
-  return hasAudio ? copy.status.readyToPreview : copy.status.loadAudioToStart;
 }
 
 function withTimeout<T>(

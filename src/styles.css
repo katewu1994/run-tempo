@@ -325,38 +325,6 @@ p {
   min-width: 0;
 }
 
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-  box-shadow: var(--shadow-soft);
-}
-
-.audio-status-chip {
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  color: var(--text-soft);
-}
-
-.status-chip.live {
-  border-color: rgba(0, 113, 227, 0.35);
-  color: var(--accent);
-}
-
-.audio-status-chip.live svg {
-  animation: pulse-dot 1.1s ease-in-out infinite;
-}
-
 @keyframes pulse-dot {
   0%,
   100% {
