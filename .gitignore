@@ -13,3 +13,7 @@ dist-check5/
 vite.config.js
 vite.config.d.ts
 .DS_Store
+
+# Local-only product video production assets
+/docs/storyboard/
+/docs/storyboard-*/

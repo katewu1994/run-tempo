@@ -5,6 +5,7 @@ import {
   FileAudio,
   FolderOpen,
   LoaderCircle,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { analyzeBpm } from "../audio/analyzeBpm";
@@ -845,6 +846,15 @@ export function MultiTrackPlanner({
             ariaLabel={copy.flow.ariaLabel}
             onSelect={goToStep}
           />
+          <div className="workflow-local-processing">
+            <span className="workflow-local-processing-icon" aria-hidden="true">
+              <ShieldCheck size={15} strokeWidth={2.1} />
+            </span>
+            <span>
+              <strong>On-device</strong>
+              <small>Audio processing stays in your browser</small>
+            </span>
+          </div>
         </aside>
 
         <div className="stage">
@@ -936,45 +946,47 @@ export function MultiTrackPlanner({
                   </div>
                 </div>
 
-                <div className="multi-library-footer">
-                  <div className="library-import-footer">
-                    {tracks.length > 0 ? (
-                      <dl className="multi-library-compact-summary">
-                        <div className="library-summary-card library-summary-total">
-                          <dt>{copy.upload.librarySummary.total}</dt>
-                          <dd>
-                            <strong>{libraryStats.total}</strong>
-                            <small>
-                              {libraryStats.finished} {copy.upload.librarySummary.finished}
-                              <i>·</i>
-                              {libraryStats.raw} {copy.upload.librarySummary.raw}
-                            </small>
-                          </dd>
-                        </div>
-                        <div className="library-summary-card library-summary-cadence">
-                          <dt>{copy.upload.librarySummary.cadenceRange}</dt>
-                          <dd>
-                            <strong>{libraryStats.cadenceRange}</strong>
-                            <small>{copy.upload.cadenceRangeHint(libraryStats.total)}</small>
-                          </dd>
-                        </div>
-                      </dl>
-                    ) : null}
-                    {tracks.length > 0 ? (
-                      <button
-                        type="button"
-                        className="secondary-action clear-library-action"
-                        disabled={isAnalyzing}
-                        onClick={handleClearLibrary}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                        {copy.upload.clearLibrary}
-                      </button>
-                    ) : null}
-                  </div>
+                {tracks.length > 0 || errorText ? (
+                  <div className="multi-library-footer">
+                    <div className="library-import-footer">
+                      {tracks.length > 0 ? (
+                        <dl className="multi-library-compact-summary">
+                          <div className="library-summary-card library-summary-total">
+                            <dt>{copy.upload.librarySummary.total}</dt>
+                            <dd>
+                              <strong>{libraryStats.total}</strong>
+                              <small>
+                                {libraryStats.finished} {copy.upload.librarySummary.finished}
+                                <i>·</i>
+                                {libraryStats.raw} {copy.upload.librarySummary.raw}
+                              </small>
+                            </dd>
+                          </div>
+                          <div className="library-summary-card library-summary-cadence">
+                            <dt>{copy.upload.librarySummary.cadenceRange}</dt>
+                            <dd>
+                              <strong>{libraryStats.cadenceRange}</strong>
+                              <small>{copy.upload.cadenceRangeHint(libraryStats.total)}</small>
+                            </dd>
+                          </div>
+                        </dl>
+                      ) : null}
+                      {tracks.length > 0 ? (
+                        <button
+                          type="button"
+                          className="secondary-action clear-library-action"
+                          disabled={isAnalyzing}
+                          onClick={handleClearLibrary}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                          {copy.upload.clearLibrary}
+                        </button>
+                      ) : null}
+                    </div>
 
-                  {errorText ? <p className="error-text">{errorText}</p> : null}
-                </div>
+                    {errorText ? <p className="error-text">{errorText}</p> : null}
+                  </div>
+                ) : null}
               </section>
               </>
             ) : null}
