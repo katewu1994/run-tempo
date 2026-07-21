@@ -3,8 +3,9 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import cors, { type CorsOptions } from "cors";
+import compression from "compression";
 import express from "express";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { ZodError } from "zod";
 import {
   checkOpenAIConnection,
@@ -35,6 +36,7 @@ const SERVICE_NAME = "run-tempo-planner";
 const app = express();
 
 app.use(cors(getCorsOptionsDelegate()));
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => {
@@ -242,11 +244,31 @@ function configureStaticFrontend(): void {
   const staticAssetsDir = resolve(configuredStaticAssetsDir);
   const indexHtmlPath = join(staticAssetsDir, "index.html");
 
-  app.use(express.static(staticAssetsDir));
+  app.use(
+    express.static(staticAssetsDir, {
+      setHeaders: (res, filePath) => {
+        const assetPath = relative(staticAssetsDir, filePath).replaceAll("\\", "/");
+
+        if (assetPath === "index.html") {
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (assetPath.startsWith("assets/")) {
+          res.setHeader(
+            "Cache-Control",
+            "public, max-age=31536000, immutable",
+          );
+        } else if (assetPath.startsWith("models/")) {
+          res.setHeader("Cache-Control", "public, max-age=604800");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=86400");
+        }
+      },
+    }),
+  );
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found." });
   });
   app.get("*", (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(indexHtmlPath);
   });
 }

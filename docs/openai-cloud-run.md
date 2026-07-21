@@ -68,6 +68,18 @@ gcloud run deploy run-tempo \
 
 `--no-invoker-iam-check` makes the service publicly accessible without login. Use it only when anonymous visitors should be able to use the site. Without `OPENAI_API_KEY`, the app reports GPT as unavailable and falls back to its local deterministic planner; local audio analysis, mixing, and export remain available.
 
+### Performance baseline
+
+Cloud Run scales to zero by default, which can make the first request after an idle period slower. Keep one instance warm for a public, interactive site:
+
+```bash
+gcloud run services update run-tempo \
+  --region asia-northeast1 \
+  --min-instances 1
+```
+
+This incurs a baseline Cloud Run charge. The backend serves fingerprinted Vite files with one-year immutable caching and compresses responses over 1 KB. Audio model files are cached for seven days so repeat visitors do not redownload them on every visit.
+
 ### Split frontend and backend
 
 Use a split deployment only when the frontend is hosted separately. Deploy the backend from its directory:
