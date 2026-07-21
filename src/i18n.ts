@@ -365,6 +365,15 @@ const en = {
       preparingFiles: (count: number) => `Preparing ${count} file(s)...`,
       processingFile: (current: number, total: number, fileName: string) =>
         `Importing ${current}/${total}: ${fileName}`,
+      processingStages: {
+        decoding: "Decoding audio",
+        bpm: "Detecting BPM",
+        click: "Checking embedded click",
+        energy: "Measuring energy",
+        mood: "Loading music profile",
+        key: "Finding musical key",
+        structure: "Mapping energy shape",
+      },
       cadenceRangeHint: (count: number) =>
         `Detected across ${count} imported track${count === 1 ? "" : "s"}`,
       importedTracks: (

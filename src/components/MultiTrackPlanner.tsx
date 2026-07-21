@@ -8,17 +8,18 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { analyzeBpm } from "../audio/analyzeBpm";
 import { estimateAutoBeatSync } from "../audio/autoBeatSync";
 import { getBpmCandidates, normalizeBpm } from "../audio/bpmCandidates";
 import { decodeAudioFile } from "../audio/decodeAudio";
-import { detectEmbeddedClick } from "../audio/detectEmbeddedClick";
-import { analyzeMood } from "../audio/analyzeMood";
-import { analyzeMusicalKey } from "../audio/analyzeMusicalKey";
 import { normalizeTrackEnergy } from "../audio/energyNormalization";
 import { audioBufferToWavBlob } from "../audio/exportWav";
-import { extractEnergyStructure, extractRawEnergyFeatures } from "../audio/extractEnergyFeatures";
 import { generateCoverArtwork } from "../audio/generateCoverArt";
+import {
+  createMultiTrackAnalysisInput,
+  MultiTrackAnalysisQueue,
+  type AnalysisStage,
+  type AnalysisTimings,
+} from "../audio/multiTrackAnalysisQueue";
 import type { TrackAudioMap, TrackFileMap } from "../audio/multiTrackTypes";
 import { renderExecutableMixPlan } from "../audio/renderExecutableMixPlan";
 import {
@@ -101,7 +102,13 @@ type CandidateGroup = {
 
 type AnalysisMessage =
   | { kind: "preparing"; count: number }
-  | { kind: "processing"; current: number; total: number; fileName: string }
+  | {
+      kind: "processing";
+      current: number;
+      total: number;
+      fileName: string;
+      stage: AnalysisStage | "decoding";
+    }
   | {
       kind: "imported";
       added: number;
@@ -132,6 +139,8 @@ export function MultiTrackPlanner({
 }: MultiTrackPlannerProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const importRequestIdRef = useRef(0);
+  const analysisAbortControllerRef = useRef<AbortController | null>(null);
+  const analysisQueueRef = useRef<MultiTrackAnalysisQueue | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [tracks, setTracks] = useState<TrackFeature[]>([]);
   const [trackFileMap, setTrackFileMap] = useState<TrackFileMap>({});
@@ -173,6 +182,8 @@ export function MultiTrackPlanner({
   useEffect(() => {
     return () => {
       importRequestIdRef.current += 1;
+      analysisAbortControllerRef.current?.abort();
+      analysisQueueRef.current?.dispose();
       const audioContext = audioContextRef.current;
       if (audioContext && audioContext.state !== "closed") {
         void audioContext.close().catch(() => {
@@ -208,7 +219,11 @@ export function MultiTrackPlanner({
   );
   const importProgress = useMemo(() => {
     if (analysisMessage?.kind === "processing") {
-      return Math.round((analysisMessage.current / analysisMessage.total) * 100);
+      return Math.round(
+        ((analysisMessage.current - 1 + getAnalysisStageProgress(analysisMessage.stage)) /
+          analysisMessage.total) *
+          100,
+      );
     }
 
     return analysisMessage?.kind === "preparing" ? 0 : null;
@@ -344,6 +359,11 @@ export function MultiTrackPlanner({
     return audioContextRef.current;
   };
 
+  const getAnalysisQueue = () => {
+    analysisQueueRef.current ??= new MultiTrackAnalysisQueue();
+    return analysisQueueRef.current;
+  };
+
   const handleFilesSelect = async (
     files: FileList | null,
   ) => {
@@ -387,9 +407,13 @@ export function MultiTrackPlanner({
     resetPlanningOutput();
 
     const importedTracks: TrackFeature[] = [];
-    const nextTrackFileMap: TrackFileMap = {};
+    const stageTimings: Partial<Record<keyof AnalysisTimings, number>> = {};
     let failures = 0;
     const requestId = ++importRequestIdRef.current;
+    analysisAbortControllerRef.current?.abort();
+    const analysisController = new AbortController();
+    analysisAbortControllerRef.current = analysisController;
+    const importStartedAt = performance.now();
 
     try {
       const audioContext = await getAudioContext();
@@ -405,6 +429,7 @@ export function MultiTrackPlanner({
           current: index + 1,
           total: importEntries.length,
           fileName: relativePath,
+          stage: "decoding",
         });
 
         try {
@@ -419,31 +444,49 @@ export function MultiTrackPlanner({
           );
 
           await new Promise((resolve) => window.requestAnimationFrame(resolve));
+          const analysis = await getAnalysisQueue().enqueue(
+            createMultiTrackAnalysisInput(
+              decoded.audioBuffer,
+              embeddedCadenceBpm,
+              embeddedMetadata?.rawEnergyFeatures ?? null,
+            ),
+            {
+              signal: analysisController.signal,
+              onProgress: (stage) => {
+                if (requestId === importRequestIdRef.current) {
+                  setAnalysisMessage({
+                    kind: "processing",
+                    current: index + 1,
+                    total: importEntries.length,
+                    fileName: relativePath,
+                    stage,
+                  });
+                }
+              },
+            },
+          );
 
-          const detectedBpm =
-            embeddedCadenceBpm !== null
-              ? embeddedCadenceBpm
-              : await detectPlanningBpm(decoded.audioBuffer);
-          const clickDetection =
-            embeddedMetadata
-              ? { status: "confirmed" as const, confidence: 1 }
-              : detectEmbeddedClick(decoded.audioBuffer, detectedBpm);
+          if (requestId !== importRequestIdRef.current) {
+            return;
+          }
+
+          for (const [stage, durationMs] of Object.entries(analysis.timings)) {
+            const stageKey = stage as keyof AnalysisTimings;
+            stageTimings[stageKey] = (stageTimings[stageKey] ?? 0) + durationMs;
+          }
+
           const trackId = createTrackId(file, sourceKind, index);
-          const rawEnergyFeatures =
-            embeddedMetadata?.rawEnergyFeatures ??
-            extractRawEnergyFeatures(decoded.audioBuffer);
-          const mood = await analyzeMood(decoded.audioBuffer, rawEnergyFeatures);
-
-          nextTrackFileMap[trackId] = file;
-
-          importedTracks.push({
+          const detectedBpm = analysis.detectedBpm
+            ? normalizeBpm(analysis.detectedBpm)
+            : null;
+          const track: TrackFeature = {
             trackId,
             importKey,
             fileName: decoded.fileName,
             relativePath: relativePath === file.name ? null : relativePath,
             sourceKind,
-            embeddedClickStatus: clickDetection.status,
-            embeddedClickConfidence: clickDetection.confidence,
+            embeddedClickStatus: analysis.clickDetection.status,
+            embeddedClickConfidence: analysis.clickDetection.confidence,
             embeddedCadenceBpm,
             durationSec: decoded.durationSec,
             detectedBpm,
@@ -453,29 +496,39 @@ export function MultiTrackPlanner({
                 : createPlanningBpmCandidates(detectedBpm),
             beatConfidence: embeddedCadenceBpm !== null ? 1 : null,
             tempoStability: embeddedCadenceBpm !== null ? 1 : null,
-            rawEnergyFeatures,
+            rawEnergyFeatures: analysis.rawEnergyFeatures,
             energyFeatureSource: embeddedMetadata?.rawEnergyFeatures
               ? "embedded"
               : "analyzed",
             normalizedEnergyScore: null,
-            musicalKey: analyzeMusicalKey(decoded.audioBuffer),
-            mood,
-            energyStructure: extractEnergyStructure(decoded.audioBuffer),
-          });
-        } catch {
+            musicalKey: analysis.musicalKey,
+            mood: analysis.mood,
+            energyStructure: analysis.energyStructure,
+          };
+
+          importedTracks.push(track);
+          setTracks((current) => normalizeTrackEnergy([...current, track]));
+          setTrackFileMap((current) => ({ ...current, [trackId]: file }));
+        } catch (analysisError) {
+          if (isAbortError(analysisError) || requestId !== importRequestIdRef.current) {
+            return;
+          }
           failures += 1;
         }
       }
 
-      const nextTracks = normalizeTrackEnergy([...tracks, ...importedTracks]);
-      setTracks(nextTracks);
-      setTrackFileMap((current) => ({ ...current, ...nextTrackFileMap }));
       setAnalysisMessage({
         kind: "imported",
         added: importedTracks.length,
-        total: nextTracks.length,
+        total: tracks.length + importedTracks.length,
         duplicates: duplicateCount,
         invalidNames: 0,
+      });
+
+      console.info("RunTempo multi-track analysis timings", {
+        elapsedMs: Math.round(performance.now() - importStartedAt),
+        tracks: importedTracks.length,
+        stages: stageTimings,
       });
 
       if (importedTracks.length > 0) {
@@ -498,6 +551,7 @@ export function MultiTrackPlanner({
 
   const handleClearLibrary = () => {
     importRequestIdRef.current += 1;
+    analysisAbortControllerRef.current?.abort();
     setCurrentStep(1);
     setTracks([]);
     setTrackFileMap({});
@@ -1243,7 +1297,11 @@ function formatAnalysisMessage(
   }
 
   if (message.kind === "processing") {
-    return copy.processingFile(message.current, message.total, message.fileName);
+    return `${copy.processingFile(
+      message.current,
+      message.total,
+      message.fileName,
+    )} · ${copy.processingStages[message.stage]}`;
   }
 
   return copy.importedTracks(
@@ -1357,13 +1415,6 @@ function formatPlannerError(
   return error.message ?? copy.actions.planningError;
 }
 
-async function detectPlanningBpm(
-  audioBuffer: AudioBuffer,
-): Promise<number | null> {
-  const analysis = await analyzeBpm(audioBuffer);
-  return analysis.bpm ? normalizeBpm(analysis.bpm) : null;
-}
-
 function createPlanningBpmCandidates(detectedBpm: number | null): BpmCandidate[] {
   if (detectedBpm === null || !Number.isFinite(detectedBpm)) {
     return [];
@@ -1395,6 +1446,24 @@ function waitForNextPaint(): Promise<void> {
       window.setTimeout(resolve, 0);
     });
   });
+}
+
+function getAnalysisStageProgress(stage: AnalysisStage | "decoding"): number {
+  const progress: Record<AnalysisStage | "decoding", number> = {
+    decoding: 0.1,
+    bpm: 0.28,
+    click: 0.42,
+    energy: 0.55,
+    mood: 0.76,
+    key: 0.9,
+    structure: 0.98,
+  };
+
+  return progress[stage];
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function withTimeout<T>(
