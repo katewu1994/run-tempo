@@ -42,11 +42,26 @@ Open `http://localhost:8080` and verify `http://localhost:8080/health` after the
 
 ## Cloud Run deployment
 
-### Single service
+### Public and judging services
 
 This is the recommended setup. The root Dockerfile builds the Vite frontend and Express backend into one image. Express serves the compiled frontend and same-origin `/api` routes, so CORS and `VITE_PLANNER_API_BASE_URL` do not need production configuration.
 
-To enable GPT-assisted planning, create a Secret Manager secret containing the OpenAI API key, grant the Cloud Run runtime service account access to it, then deploy from the repository root:
+Use two different Cloud Run service names so that deploying the protected judging demo cannot overwrite the anonymous public demo.
+
+Deploy the public, local-planning experience without Basic Auth or an OpenAI key:
+
+```bash
+gcloud run deploy run-tempo-public \
+  --source . \
+  --region asia-northeast1 \
+  --no-invoker-iam-check \
+  --clear-env-vars \
+  --clear-secrets
+```
+
+Without `OPENAI_API_KEY`, the public service reports GPT as unavailable and falls back to its local deterministic planner; local audio analysis, mixing, and export remain available.
+
+For the protected judging experience, create Secret Manager secrets for the OpenAI API key and Basic Auth password, grant the Cloud Run runtime service account access to them, then deploy under the separate `run-tempo` service name:
 
 ```bash
 gcloud run deploy run-tempo \
@@ -57,27 +72,18 @@ gcloud run deploy run-tempo \
   --set-secrets OPENAI_API_KEY=<openai-secret-name>:latest,BASIC_AUTH_PASSWORD=<password-secret-name>:latest
 ```
 
-Adjust the project, region, service name, model, and secret name as needed. The application listens on Cloud Run's `PORT` and exposes `/health` for verification.
+Adjust the project, region, model, and secret names as needed. Keep `run-tempo-public` and `run-tempo` distinct. The application listens on Cloud Run's `PORT` and exposes `/health` for verification.
 
 Cloud Run must remain publicly invokable for a shared Basic Auth judging login: the application itself returns the login challenge before serving the UI or API. Keep both passwords in Secret Manager, never in the image or repository.
 
-An OpenAI key is optional. To deploy the local-analysis and deterministic-planning experience without GPT-assisted planning, omit `--set-secrets` and `--set-env-vars`:
-
-```bash
-gcloud run deploy run-tempo \
-  --source . \
-  --region asia-northeast1 \
-  --no-invoker-iam-check
-```
-
-`--no-invoker-iam-check` makes the service publicly accessible without login. Use it only when anonymous visitors should be able to use the site. Without `OPENAI_API_KEY`, the app reports GPT as unavailable and falls back to its local deterministic planner; local audio analysis, mixing, and export remain available.
+`--no-invoker-iam-check` allows requests to reach the container. The public service serves them directly; the judging service applies application-level Basic Auth.
 
 ### Performance baseline
 
 Cloud Run scales to zero by default, which can make the first request after an idle period slower. Keep one instance warm for a public, interactive site:
 
 ```bash
-gcloud run services update run-tempo \
+gcloud run services update run-tempo-public \
   --region asia-northeast1 \
   --min-instances 1
 ```

@@ -7,7 +7,7 @@
   <p>
     <a href="https://run-tempo-a3wfhnkpxa-an.a.run.app"><strong>Judging demo (authentication required)</strong></a>
     &nbsp;&middot;&nbsp;
-    <a href="https://run-tempo-964755108831.asia-northeast1.run.app"><strong>Public demo (no authentication required)</strong></a>
+    <a href="https://run-tempo-public-964755108831.asia-northeast1.run.app"><strong>Public demo (no authentication required)</strong></a>
   </p>
   <p><sub>The judging demo uses the credentials supplied privately through Devpost and enables GPT-assisted arrangement through a server-side OpenAI key stored in Google Secret Manager. The public demo can be opened without credentials.</sub></p>
 </div>
@@ -224,7 +224,38 @@ docker run --rm --env-file backend/.env -p 8080:8080 run-tempo
 
 Open `http://localhost:8080` after the container starts.
 
-For single-service and split-service Google Cloud Run deployment instructions, see [`docs/openai-cloud-run.md`](./docs/openai-cloud-run.md).
+Production uses two independent Google Cloud Run services:
+
+| Experience | Cloud Run service | Access | GPT planning |
+| --- | --- | --- | --- |
+| [Public demo](https://run-tempo-public-964755108831.asia-northeast1.run.app) | `run-tempo-public` | Anonymous | Disabled; uses the deterministic local planner |
+| [Judging demo](https://run-tempo-a3wfhnkpxa-an.a.run.app) | `run-tempo` | Shared Basic Auth credentials supplied through Devpost | Enabled with a server-side key from Secret Manager |
+
+Always deploy the public and judging experiences under these distinct service names. Deploying both configurations to `run-tempo` will replace the public configuration with the protected one.
+
+Deploy the public service without authentication or secrets:
+
+```bash
+gcloud run deploy run-tempo-public \
+  --source . \
+  --region asia-northeast1 \
+  --no-invoker-iam-check \
+  --clear-env-vars \
+  --clear-secrets
+```
+
+Deploy the protected judging service with GPT planning:
+
+```bash
+gcloud run deploy run-tempo \
+  --source . \
+  --region asia-northeast1 \
+  --no-invoker-iam-check \
+  --set-env-vars OPENAI_MODEL=gpt-5.6-terra,BASIC_AUTH_USERNAME=judge \
+  --set-secrets OPENAI_API_KEY=<openai-secret-name>:latest,BASIC_AUTH_PASSWORD=<password-secret-name>:latest
+```
+
+For Secret Manager setup, performance settings, and split frontend/backend deployment, see [`docs/openai-cloud-run.md`](./docs/openai-cloud-run.md).
 
 ## Project structure
 
