@@ -4,8 +4,12 @@
   <p><strong>Run in rhythm.</strong> <strong>Move with purpose.</strong></p>
   <p>Turn the music you love into a cadence-matched running mix, with a precision click that keeps every stride on beat.</p>
   <p>Local-first audio analysis, AI-assisted track arrangement, and deterministic in-browser rendering.</p>
-  <p><a href="https://run-tempo-a3wfhnkpxa-an.a.run.app"><strong>Try the deployed app</strong></a></p>
-  <p><sub>Public demo note: an OpenAI API key is intentionally not configured, so GPT-5.6-assisted arrangement is disabled and multi-track planning automatically uses the deterministic local planner. Local analysis, preview, rendering, and export remain available.</sub></p>
+  <p>
+    <a href="https://run-tempo-a3wfhnkpxa-an.a.run.app"><strong>Judging demo (authentication required)</strong></a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://run-tempo-964755108831.asia-northeast1.run.app"><strong>Public demo (no authentication required)</strong></a>
+  </p>
+  <p><sub>The judging demo uses the credentials supplied privately through Devpost and enables GPT-assisted arrangement through a server-side OpenAI key stored in Google Secret Manager. The public demo can be opened without credentials.</sub></p>
 </div>
 
 ## Overview
@@ -102,6 +106,8 @@ Create `backend/.env`:
 ```dotenv
 OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-5.6-terra
+BASIC_AUTH_USERNAME=judge
+BASIC_AUTH_PASSWORD=use-a-long-random-password
 PORT=8080
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
@@ -142,6 +148,8 @@ The frontend automatically uses the local backend during Vite development.
 | `OPENAI_API_KEY` | For GPT planning | None | Server-side OpenAI API key |
 | `OPENAI_MODEL` | No | `gpt-5.6-terra` | Model used for track arrangement |
 | `OPENAI_BASE_URL` | No | `https://api.openai.com/v1/responses` | Complete Responses API endpoint |
+| `BASIC_AUTH_USERNAME` | No | None | Shared demo username. Set together with `BASIC_AUTH_PASSWORD` to protect the entire service. |
+| `BASIC_AUTH_PASSWORD` | No | None | Shared demo password. Store it in Secret Manager in production. |
 | `PORT` | No | `8080` | Express server port |
 | `ALLOWED_ORIGINS` | No | Local development origins | Comma-separated CORS allowlist; `*` allows every origin |
 | `STATIC_ASSETS_DIR` | No | Disabled | Directory served as the production frontend |

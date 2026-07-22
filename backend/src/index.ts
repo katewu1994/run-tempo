@@ -29,12 +29,14 @@ import {
   parseYoutubeUrl,
   YoutubeImportServiceError,
 } from "./youtubeImport.js";
+import { createBasicAuthMiddleware } from "./basicAuth.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const SERVICE_NAME = "run-tempo-planner";
 
 const app = express();
 
+app.use(createBasicAuthMiddleware());
 app.use(cors(getCorsOptionsDelegate()));
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "2mb" }));

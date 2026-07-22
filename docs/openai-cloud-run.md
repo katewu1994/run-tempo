@@ -17,6 +17,8 @@ Backend:
 - `OPENAI_API_KEY`: required for GPT-assisted planning.
 - `OPENAI_MODEL`: optional; defaults to `gpt-5.6-terra`.
 - `OPENAI_BASE_URL`: optional complete Responses API endpoint.
+- `BASIC_AUTH_USERNAME`: optional shared username for a private judging demo.
+- `BASIC_AUTH_PASSWORD`: optional shared password; configure both Basic Auth variables together.
 - `PORT`: optional; defaults to `8080`. Cloud Run supplies this value.
 - `ALLOWED_ORIGINS`: comma-separated frontend origins used only for a split deployment.
 - `STATIC_ASSETS_DIR`: directory containing the compiled frontend. The root image sets this to `/app/public`.
@@ -51,11 +53,13 @@ gcloud run deploy run-tempo \
   --source . \
   --region asia-northeast1 \
   --no-invoker-iam-check \
-  --set-env-vars OPENAI_MODEL=gpt-5.6-terra \
-  --set-secrets OPENAI_API_KEY=<secret-name>:latest
+  --set-env-vars OPENAI_MODEL=gpt-5.6-terra,BASIC_AUTH_USERNAME=judge \
+  --set-secrets OPENAI_API_KEY=<openai-secret-name>:latest,BASIC_AUTH_PASSWORD=<password-secret-name>:latest
 ```
 
 Adjust the project, region, service name, model, and secret name as needed. The application listens on Cloud Run's `PORT` and exposes `/health` for verification.
+
+Cloud Run must remain publicly invokable for a shared Basic Auth judging login: the application itself returns the login challenge before serving the UI or API. Keep both passwords in Secret Manager, never in the image or repository.
 
 An OpenAI key is optional. To deploy the local-analysis and deterministic-planning experience without GPT-assisted planning, omit `--set-secrets` and `--set-env-vars`:
 
